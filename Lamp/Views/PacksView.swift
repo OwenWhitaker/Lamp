@@ -6,7 +6,6 @@ struct PacksView: View {
     @Query(sort: \Pack.createdAt, order: .reverse) private var packs: [Pack]
     @Binding var path: NavigationPath
     @Binding var showAddPack: Bool
-    @Namespace private var glassNamespace
 
     private let columns = [
         GridItem(.flexible(), spacing: 16),
@@ -15,39 +14,55 @@ struct PacksView: View {
 
     var body: some View {
         ScrollView {
-            GlassEffectContainer(spacing: 16) {
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(packs) { pack in
-                        PackCardView(pack: pack, namespace: glassNamespace) {
-                            path.append(pack)
-                        }
-                    }
-                    AddPackCardView {
-                        showAddPack = true
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(packs) { pack in
+                    PackCardView(pack: pack) {
+                        path.append(pack)
                     }
                 }
-                .padding()
+                AddPackCardView {
+                    showAddPack = true
+                }
             }
+            .padding()
         }
     }
 }
 
 struct PackCardView: View {
     let pack: Pack
-    let namespace: Namespace.ID
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text(pack.title)
-                .font(.headline)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, minHeight: 100)
-                .padding()
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(height: 4)
+                Spacer()
+                Text(pack.title)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                Spacer()
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(height: 4)
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(3/4, contentMode: .fit)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(white: 0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.white.opacity(0.15), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(.plain)
-        .glassEffect()
-        .glassEffectID(pack.id.uuidString, in: namespace)
     }
 }
 
@@ -58,10 +73,20 @@ struct AddPackCardView: View {
         Button(action: action) {
             Image(systemName: "plus")
                 .font(.largeTitle)
-                .frame(maxWidth: .infinity, minHeight: 100)
+                .foregroundStyle(.white.opacity(0.8))
+                .frame(maxWidth: .infinity)
+                .aspectRatio(3/4, contentMode: .fit)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(white: 0.12))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(Color.white.opacity(0.2), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
         }
         .buttonStyle(.plain)
-        .glassEffect()
     }
 }
 

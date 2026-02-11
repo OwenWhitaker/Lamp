@@ -8,6 +8,7 @@ struct MemorizationView: View {
     let pack: Pack?
     @State private var currentIndex: Int = 0
     @State private var isRevealed = false
+    @State private var showSessionSettings = false
 
     private var currentVerse: Verse? {
         guard verses.indices.contains(currentIndex) else { return nil }
@@ -22,18 +23,31 @@ struct MemorizationView: View {
                 } label: {
                     Image(systemName: "xmark")
                 }
+                .buttonStyle(.bordered)
                 Spacer()
                 Text("\(currentIndex + 1)/\(verses.count)")
                     .font(.headline)
                 Spacer()
-                Button {
-                    markGotIt()
-                    advance()
-                } label: {
-                    Image(systemName: "checkmark")
+                HStack(spacing: 16) {
+                    Button {
+                        showSessionSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .buttonStyle(.bordered)
+                    Button {
+                        markGotIt()
+                        advance()
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
             }
             .padding()
+            .sheet(isPresented: $showSessionSettings) {
+                SessionSettingsPlaceholderView()
+            }
 
             if let verse = currentVerse {
                 VStack(alignment: .leading, spacing: 12) {
@@ -53,7 +67,14 @@ struct MemorizationView: View {
                 .onTapGesture {
                     withAnimation { isRevealed = true }
                 }
-                .glassEffect()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.systemBackground))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(Color(.separator), lineWidth: 1)
+                        )
+                )
                 .padding()
 
                 HStack(spacing: 24) {
@@ -64,7 +85,7 @@ struct MemorizationView: View {
                     } label: {
                         Image(systemName: "chevron.left")
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .disabled(currentIndex == 0)
 
                     Spacer()
@@ -72,7 +93,7 @@ struct MemorizationView: View {
                     Button("Skip") {
                         advance()
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
 
                     Spacer()
 
@@ -83,7 +104,7 @@ struct MemorizationView: View {
                     } label: {
                         Image(systemName: "chevron.right")
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .disabled(currentIndex >= verses.count - 1)
                 }
                 .padding()
@@ -120,6 +141,28 @@ struct MemorizationView: View {
             currentIndex += 1
         } else {
             dismiss()
+        }
+    }
+}
+
+struct SessionSettingsPlaceholderView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Text("Session order and options coming soon.")
+                .foregroundStyle(.secondary)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle("Session Settings")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            dismiss()
+                        }
+                    }
+                }
         }
     }
 }
