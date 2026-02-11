@@ -28,42 +28,52 @@ struct VerseView: View {
                 .onTapGesture {
                     withAnimation { isRevealed.toggle() }
                 }
-                .glassEffect()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(.systemBackground))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(Color(.separator), lineWidth: 1)
+                        )
+                )
 
                 VStack(spacing: 12) {
                     Button("Flashcard") {
                         withAnimation { isRevealed.toggle() }
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
 
                     Button("Memorization Tool 2") {
                         // Placeholder
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
 
                     Button("Memorization Tool 3") {
                         // Placeholder
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity)
                 }
             }
             .padding()
         }
-        .navigationTitle(verse.reference)
+        .navigationTitle(verse.pack?.title ?? verse.reference)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button(role: .destructive) {
-                        showDeleteConfirmation = true
-                    } label: {
-                        Label("Delete Verse", systemImage: "trash")
-                    }
+                Button {
+                    // Edit verse – placeholder
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "square.and.pencil")
+                }
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Button(role: .destructive) {
+                    showDeleteConfirmation = true
+                } label: {
+                    Image(systemName: "trash")
                 }
             }
         }

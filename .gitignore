@@ -21,3 +21,6 @@ xcuserdata/
 
 # macOS
 .DS_Store
+
+# Extracted screen-recording frames (scripts/extract-frames-from-recording.sh)
+recording-frames/
