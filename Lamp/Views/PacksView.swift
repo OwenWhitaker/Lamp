@@ -12,6 +12,9 @@ private enum WalletCardLayout {
     static let backLayerPeek: CGFloat = 4
     static let backLayerFill = Color(red: 0.55, green: 0.42, blue: 0.30)
     static let frontLayerFill = Color(red: 0.62, green: 0.48, blue: 0.36)
+    /// Add-pack card: very light grey (opaque), reads as secondary.
+    static let addPackFrontFill = Color(white: 0.92)
+    static let addPackBackFill = Color(white: 0.86)
     /// Clear plastic pocket: inset from pack edges.
     static let pocketInset: CGFloat = 6
     /// Extra padding above the glass pane to mimic the fold at the top of a real pack.
@@ -119,9 +122,9 @@ struct PackCardView: View {
                         .glassEffect(in: RoundedRectangle(cornerRadius: WalletCardLayout.pocketCornerRadius))
                         .overlay(
                             Text(pack.title)
-                                .font(.headline)
+                                .font(.system(.largeTitle, design: .rounded))
                                 .multilineTextAlignment(.center)
-                                .foregroundStyle(Color(red: 0.18, green: 0.12, blue: 0.08))
+                                .foregroundStyle(Color.black)
                                 .lineLimit(1)
                                 .padding(.horizontal, 12)
                         )
@@ -164,20 +167,34 @@ struct AddPackCardView: View {
             ZStack(alignment: .top) {
                 // Back layer: full rectangle (same shape as pack) so no gap at corners
                 walletCardShape
-                    .fill(WalletCardLayout.backLayerFill)
+                    .fill(WalletCardLayout.addPackBackFill)
                     .frame(maxWidth: .infinity)
                     .frame(height: totalHeight)
                     .padding(.horizontal, WalletCardLayout.backLayerInset)
                     .offset(y: WalletCardLayout.backLayerPeek)
 
-                // Front layer: main card
-                Image(systemName: "plus")
-                    .font(.largeTitle)
-                    .foregroundStyle(Color(red: 0.22, green: 0.14, blue: 0.10))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: frontHeight)
-                    .background(walletCardShape.fill(WalletCardLayout.frontLayerFill))
-                    .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+                // Front layer: main card with glass pocket (same as pack cards)
+                ZStack {
+                    walletCardShape
+                        .fill(WalletCardLayout.addPackFrontFill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    RoundedRectangle(cornerRadius: WalletCardLayout.pocketCornerRadius)
+                        .fill(.clear)
+                        .glassEffect(in: RoundedRectangle(cornerRadius: WalletCardLayout.pocketCornerRadius))
+                        .overlay(
+                            Image(systemName: "plus")
+                                .font(.largeTitle)
+                                .foregroundStyle(.white)
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.top, WalletCardLayout.pocketTopFoldInset)
+                        .padding(.horizontal, WalletCardLayout.pocketInset)
+                        .padding(.bottom, WalletCardLayout.pocketInset)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: frontHeight)
+                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
             }
             .frame(maxWidth: .infinity)
             .frame(height: totalHeight)
