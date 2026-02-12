@@ -1,6 +1,12 @@
 import SwiftUI
 import SwiftData
 
+/// Shared card dimensions for verse cards. Used by PackDetailView (rolodex) and FlashcardView so one edit updates both.
+enum VerseCardLayout {
+    static let cardHeight: CGFloat = 160
+    static let horizontalPadding: CGFloat = 20
+}
+
 /// Collects each card's minY in the scroll coordinate space for live tilt.
 private struct CardFramePreferenceKey: PreferenceKey {
     static var defaultValue: [UUID: CGFloat] { [:] }
@@ -53,8 +59,8 @@ struct PackDetailView: View {
     /// 3D tilt: top edge recedes into screen, bottom edge toward viewer (rotation around X axis).
     private let rolodexTilt: Double = -12
 
-    /// Fixed height for all cards so they are uniform in the stack.
-    private let rolodexCardHeight: CGFloat = 160
+    /// Fixed height for all cards so they are uniform in the stack. Sourced from VerseCardLayout so flashcard and pack detail stay in sync.
+    private var rolodexCardHeight: CGFloat { VerseCardLayout.cardHeight }
 
     /// Spacer between cards in the rolodex (angled cards use normal spacing; no condensed overlap).
     private let rolodexStackOverlap: CGFloat = 12
@@ -394,7 +400,7 @@ struct PackDetailView: View {
                     }
                 }
                 .padding(.top, prominenceLine)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, VerseCardLayout.horizontalPadding)
                 .padding(.bottom, scrollBottomPaddingAboveFooter + CGFloat(max(16, filteredVerses.count * 48)))
                 .onPreferenceChange(CardFramePreferenceKey.self) { newValue in
                     // Only update when positions changed meaningfully (tolerance avoids feedback loop and jitter).

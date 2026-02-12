@@ -26,90 +26,63 @@ struct FlashcardView: View {
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    TabView(selection: $currentIndex) {
-                        ForEach(Array(verses.enumerated()), id: \.element.id) { index, verse in
-                            flashcardFace(verse: verse)
+                    GeometryReader { geo in
+                        let cardWidth = geo.size.width - 2 * VerseCardLayout.horizontalPadding
+                        TabView(selection: $currentIndex) {
+                            ForEach(Array(verses.enumerated()), id: \.element.id) { index, verse in
+                                HStack(spacing: 0) {
+                                    flashcardFace(verse: verse)
+                                        .frame(width: cardWidth, height: VerseCardLayout.cardHeight)
+                                    Spacer(minLength: 0)
+                                }
                                 .tag(index)
+                            }
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .onChange(of: currentIndex) { _, _ in
+                            isFlipped = false
                         }
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .onChange(of: currentIndex) { _, _ in
-                        isFlipped = false
-                    }
+                    .frame(height: VerseCardLayout.cardHeight)
 
                     HStack(spacing: 6) {
                         ForEach(Array(verses.enumerated()), id: \.element.id) { index, _ in
                             Circle()
                                 .fill(index == currentIndex ? Color.primary : Color.primary.opacity(0.2))
-                                .frame(width: 8, height: 8)
+                                .frame(
+                                    width: index == currentIndex ? 10 : 8,
+                                    height: index == currentIndex ? 10 : 8
+                                )
                         }
                     }
                     .padding(.vertical, 16)
 
-                    HStack(spacing: 12) {
-                        Button("Memorization Tool") {
+                    VStack(spacing: 12) {
+                        memorizationToolButton(icon: "xmark", label: "Memorization Tool") {
                             // Placeholder
                         }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-
-                        Button("Swipe to sort") {
+                        memorizationToolButton(icon: "xmark", label: "Memorization Tool") {
                             showSwipeToSort = true
                         }
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
-
-                        Button("Memorization Tool") {
+                        memorizationToolButton(icon: "xmark", label: "Memorization Tool") {
                             // Placeholder
                         }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 12)
-
-                    HStack(spacing: 32) {
-                        Button {
-                            if currentIndex > 0 {
-                                withAnimation { currentIndex -= 1 }
-                            }
-                        } label: {
-                            Image(systemName: "chevron.left.circle")
-                                .font(.title2)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(currentIndex == 0)
-
-                        Button {
-                            // Placeholder center action
-                        } label: {
-                            Image(systemName: "circle")
-                                .font(.title2)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            if currentIndex < verses.count - 1 {
-                                withAnimation { currentIndex += 1 }
-                            }
-                        } label: {
-                            Image(systemName: "chevron.right.circle")
-                                .font(.title2)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(currentIndex >= verses.count - 1)
-                    }
+                    .padding(.horizontal, VerseCardLayout.horizontalPadding)
                     .padding(.bottom, 24)
                 }
             }
-            .navigationTitle(pack.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
+                    HStack(spacing: 6) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        Text(pack.title)
+                            .font(.headline)
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -133,8 +106,31 @@ struct FlashcardView: View {
         }
     }
 
+    private func memorizationToolButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.title2)
+                Text(label)
+                    .font(.body)
+                Spacer(minLength: 0)
+            }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.systemBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(Color(.separator), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func flashcardFace(verse: Verse) -> some View {
-        ZStack {
+        ZStack(alignment: .bottomTrailing) {
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color(.systemBackground))
                 .overlay(
@@ -153,9 +149,12 @@ struct FlashcardView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding()
                 .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(12)
         }
-        .padding(.horizontal, 24)
-        .aspectRatio(1.4, contentMode: .fit)
         .rotation3DEffect(.degrees(isFlipped ? 180 : 0), axis: (x: 0, y: 1, z: 0))
         .onTapGesture {
             withAnimation(.easeInOut(duration: 0.25)) {
