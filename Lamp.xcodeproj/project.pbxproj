@@ -17,6 +17,7 @@
 		A1000000000000000000000F /* AddPackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* AddPackView.swift */; };
 		A10000000000000000000011 /* MemorizationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* MemorizationView.swift */; };
 		A10000000000000000000013 /* AddVerseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* AddVerseView.swift */; };
+		A10000000000000000000017 /* FlashcardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* FlashcardView.swift */; };
 		A10000000000000000000015 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -32,6 +33,7 @@
 		A10000000000000000000010 /* AddPackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPackView.swift; sourceTree = "<group>"; };
 		A10000000000000000000012 /* MemorizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemorizationView.swift; sourceTree = "<group>"; };
 		A10000000000000000000014 /* AddVerseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddVerseView.swift; sourceTree = "<group>"; };
+		A10000000000000000000018 /* FlashcardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardView.swift; sourceTree = "<group>"; };
 		A10000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -74,6 +76,7 @@
 				A1000000000000000000000C /* PackDetailView.swift */,
 				A1000000000000000000000E /* VerseView.swift */,
 				A10000000000000000000010 /* AddPackView.swift */,
+				A10000000000000000000018 /* FlashcardView.swift */,
 				A10000000000000000000012 /* MemorizationView.swift */,
 				A10000000000000000000014 /* AddVerseView.swift */,
 			);
@@ -178,6 +181,7 @@
 				A1000000000000000000000F /* AddPackView.swift in Sources */,
 				A10000000000000000000011 /* MemorizationView.swift in Sources */,
 				A10000000000000000000013 /* AddVerseView.swift in Sources */,
+				A10000000000000000000017 /* FlashcardView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
 
+private let swipeThreshold: CGFloat = 80
+
 struct MemorizationView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -9,6 +11,7 @@ struct MemorizationView: View {
     @State private var currentIndex: Int = 0
     @State private var isRevealed = false
     @State private var showSessionSettings = false
+    @State private var dragOffset: CGFloat = 0
 
     private var currentVerse: Verse? {
         guard verses.indices.contains(currentIndex) else { return nil }
@@ -50,6 +53,20 @@ struct MemorizationView: View {
             }
 
             if let verse = currentVerse {
+                ZStack {
+                    Image(systemName: "xmark")
+                        .font(.title)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Image(systemName: "checkmark")
+                        .font(.title)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .frame(height: 44)
+                .padding(.horizontal, 20)
+
                 VStack(alignment: .leading, spacing: 12) {
                     Text(verse.reference)
                         .font(.headline)
@@ -75,39 +92,28 @@ struct MemorizationView: View {
                                 .strokeBorder(Color(.separator), lineWidth: 1)
                         )
                 )
-                .padding()
-
-                HStack(spacing: 24) {
-                    Button {
-                        if currentIndex > 0 {
-                            currentIndex -= 1
+                .padding(.horizontal, 20)
+                .offset(x: dragOffset)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            dragOffset = value.translation.width
                         }
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(currentIndex == 0)
-
-                    Spacer()
-
-                    Button("Skip") {
-                        advance()
-                    }
-                    .buttonStyle(.bordered)
-
-                    Spacer()
-
-                    Button {
-                        if currentIndex < verses.count - 1 {
-                            currentIndex += 1
+                        .onEnded { value in
+                            let width = value.translation.width
+                            if width < -swipeThreshold {
+                                markNeedsWork()
+                                animateCardOff(direction: -1)
+                            } else if width > swipeThreshold {
+                                markGotIt()
+                                animateCardOff(direction: 1)
+                            } else {
+                                withAnimation(.spring(response: 0.3)) {
+                                    dragOffset = 0
+                                }
+                            }
                         }
-                    } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(currentIndex >= verses.count - 1)
-                }
-                .padding()
+                )
             } else {
                 ContentUnavailableView(
                     "No verses to review",
@@ -125,6 +131,18 @@ struct MemorizationView: View {
         }
         .onChange(of: currentIndex) { _, _ in
             isRevealed = false
+            dragOffset = 0
+        }
+    }
+
+    private func animateCardOff(direction: Int) {
+        let exitOffset = CGFloat(direction) * 500
+        withAnimation(.easeOut(duration: 0.2)) {
+            dragOffset = exitOffset
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            dragOffset = 0
+            advance()
         }
     }
 
@@ -133,6 +151,14 @@ struct MemorizationView: View {
         verse.lastReviewed = Date()
         let current = verse.memoryHealth ?? 0
         verse.memoryHealth = min(1, current + 0.1)
+        try? modelContext.save()
+    }
+
+    private func markNeedsWork() {
+        guard let verse = currentVerse else { return }
+        verse.lastReviewed = Date()
+        let current = verse.memoryHealth ?? 0
+        verse.memoryHealth = max(0, current - 0.1)
         try? modelContext.save()
     }
 

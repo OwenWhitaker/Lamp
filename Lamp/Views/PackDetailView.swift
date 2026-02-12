@@ -9,8 +9,14 @@ private struct CardFramePreferenceKey: PreferenceKey {
     }
 }
 
+/// Reports the scroll view’s visible height so the bottom stack can be placed with only 6pt of the bottommost card visible.
+private struct ScrollViewHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 /// Returns true if any position changed by more than `tolerance` (or keys differ). Use a small tolerance so scroll-driven positions update smoothly without snapping.
-private func cardMinYsChanged(_ newValue: [UUID: CGFloat], _ old: [UUID: CGFloat], tolerance: CGFloat = 0.25) -> Bool {
+private func cardMinYsChanged(_ newValue: [UUID: CGFloat], _ old: [UUID: CGFloat], tolerance: CGFloat = 0.1) -> Bool {
     guard newValue.count == old.count else { return true }
     for (id, newY) in newValue {
         guard let oldY = old[id] else { return true }
@@ -60,6 +66,8 @@ struct PackDetailView: View {
 
     /// Fixed Y of the prominence slot.
     private let prominenceLine: CGFloat = 16
+    /// Y below which cards start getting tilt (angled). Same distance as bottom-stack→angled for equivalent transition.
+    private var angledStartY: CGFloat { prominenceLine + topStackToAngledTransitionHeight }
     /// Y where stack cards rest, stacked directly on top of one another (4, 10, 16, …).
     private let stackBaseY: CGFloat = 4
     /// Vertical offset per card in the stack (pixels).
@@ -71,11 +79,35 @@ struct PackDetailView: View {
     /// Max number of cards visible in the stack; the 4th and beyond are hidden behind the 3rd.
     private let maxVisibleStackCount: Int = 3
 
+    /// Height of the visible sliver of the bottommost card above the pack footer (orange border).
+    private let bottomStackVisibleSliver: CGFloat = 6
+    /// Fallback when scroll height isn’t available yet; use a typical viewport height so the stack starts low.
+    private let scrollViewHeightFallback: CGFloat = 580
+    /// Y below which cards sit in the "bottom stack". Positioned so only the top `bottomStackVisibleSliver` of the bottommost card shows above the footer.
+    private var bottomStackThresholdY: CGFloat {
+        let justBelow = prominenceLine + rolodexCardHeight
+        let base = justBelow + 1 * (rolodexCardHeight + rolodexStackOverlap)
+        let h = scrollViewHeight > 0 ? scrollViewHeight : scrollViewHeightFallback
+        let n = max(0, filteredVerses.count - prominentIndex - 2)
+        guard n > 0 else { return base }
+        return h - bottomStackVisibleSliver - CGFloat(n - 1) * bottomStackPixelOffset
+    }
+    /// Extra bottom padding so the bottom stack stays visible above the pack footer when scrolled.
+    private let scrollBottomPaddingAboveFooter: CGFloat = 120
+    /// Vertical offset per card in the bottom stack (same as top). Front card stays at fixed Y; positions are index-based so cards don’t shift as others leave.
+    private let bottomStackPixelOffset: CGFloat = 6
+    /// Distance over which a card tapers between flat and angled at top or bottom. Same value for equivalent feel.
+    private let topStackToAngledTransitionHeight: CGFloat = 40
+    /// Distance over which a card tapers from bottom-stack position into angled (scroll-driven).
+    private let bottomStackToAngledTransitionHeight: CGFloat = 40
+
     /// ID of the verse at the scroll anchor (top); drives which card is prominent.
     @State private var scrollAnchorID: UUID?
 
     /// Each card's minY in the scroll coordinate space (live-updated as user scrolls).
     @State private var cardMinYs: [UUID: CGFloat] = [:]
+    /// Scroll view’s visible height (from GeometryReader) so we can place the bottom stack with only 6pt of the bottommost card visible.
+    @State private var scrollViewHeight: CGFloat = 0
 
     /// Index of the verse currently in prominence (at the top of the scroll).
     private var prominentIndex: Int {
@@ -117,8 +149,21 @@ struct PackDetailView: View {
             .id
     }
 
-    /// Visual-only offset: one continuous motion from angled into prominence. Approaching card speeds up in threshold; same card keeps offset in prominence band tapering to 0 so no jump. Does not change layout.
+    /// Card that should be shown as prominent: scroll anchor when set, else the card optically at the top (minY within threshold).
+    /// Max distance below prominence line for a card to count as "optically in place" on the top stack.
+    private let prominentAtTopThreshold: CGFloat = 44
+    private var effectiveProminentVerseID: UUID? {
+        if let id = scrollAnchorID { return id }
+        let atTopMax = prominenceLine + prominentAtTopThreshold
+        return filteredVerses
+            .filter { let y = cardMinYs[$0.id]; return y != nil && y! >= prominenceLine && y! <= atTopMax }
+            .min(by: { (cardMinYs[$0.id] ?? .infinity) < (cardMinYs[$1.id] ?? .infinity) })?
+            .id
+    }
+
+    /// Visual-only offset: one continuous motion from angled into prominence. Anchor gets 0 so fast scrolls don’t leave it offset.
     private func angledVisualOffset(for verseID: UUID, approachingVerseID: UUID?, transitioningVerseID: UUID?) -> CGFloat {
+        if verseID == effectiveProminentVerseID { return 0 }
         guard let minY = cardMinYs[verseID] else { return 0 }
         let justBelow = prominenceLine + rolodexCardHeight
         let bandHeight = justBelow - prominenceLine
@@ -138,8 +183,9 @@ struct PackDetailView: View {
         return 0
     }
 
-    /// 0 = far from prominence line, 1 = at prominent position. Used for full-text visibility.
+    /// 0 = far from prominence line, 1 = at prominent position. Anchor is always prominent so fast scrolls don’t leave it stuck angled.
     private func prominenceFactor(for verseID: UUID, index: Int) -> Double {
+        if verseID == effectiveProminentVerseID { return 1 }
         if let minY = cardMinYs[verseID] {
             let distance = abs(minY - prominenceLine)
             let fadeDistance: CGFloat = 140
@@ -148,15 +194,30 @@ struct PackDetailView: View {
         return index == prominentIndex ? 1 : 0
     }
 
-    /// Tilt: 0 when at or above prominence line (minY <= prominenceLine), else interpolates below.
+    /// Smoothstep for zero derivative at 0 and 1 (no snap).
+    private func smoothstep(_ t: Double) -> Double {
+        let c = min(1, max(0, t))
+        return c * c * (3 - 2 * c)
+    }
+
+    /// Tilt: 0 at prominent and bottom stack. Smooth ramp only from angled into prominent/top stack (prominenceLine … angledStartY).
     private func tiltDegrees(for verseID: UUID, index: Int) -> Double {
+        if verseID == effectiveProminentVerseID { return 0 }
         guard let minY = cardMinYs[verseID] else {
             return index == prominentIndex ? 0 : rolodexTilt
         }
         if minY <= prominenceLine { return 0 }
-        let fadeDistance: CGFloat = 140
-        let factor = 1 - min(1, Double((minY - prominenceLine) / fadeDistance))
-        return rolodexTilt * (1 - factor)
+        if minY > bottomStackThresholdY { return 0 }
+        // Only smooth the angled → prominent/top stack transition
+        if minY < angledStartY {
+            let rampHeight = angledStartY - prominenceLine
+            let t = Double((minY - prominenceLine) / rampHeight)
+            return rolodexTilt * smoothstep(t)
+        }
+        let band = bottomStackThresholdY - angledStartY
+        guard band > 0 else { return rolodexTilt }
+        let t = Double((minY - angledStartY) / band)
+        return rolodexTilt * (1 - min(1, max(0, t)))
     }
 
     /// All cards with minY < prominenceLine, sorted by minY ascending (index 0 = oldest = rank 0).
@@ -188,8 +249,9 @@ struct PackDetailView: View {
         return visibleStack.firstIndex { $0.id == verseID }
     }
 
-    /// Vertical offset for scrolled-past cards. Stack shift is driven by the approaching card (minY >= prominenceLine) so it updates with scroll simultaneously.
+    /// Vertical offset for scrolled-past cards. Anchor never gets stack offset (it’s prominent).
     private func stackOffset(for verseID: UUID) -> CGFloat? {
+        if verseID == effectiveProminentVerseID { return nil }
         guard let minY = cardMinYs[verseID], minY < prominenceLine else { return nil }
         let sorted = sortedStackCards()
         let n = sorted.count
@@ -231,16 +293,43 @@ struct PackDetailView: View {
         return targetY - minY
     }
 
-    /// zIndex: hidden stack cards (300), visible stack at back (400+), prominent in slot (1000), angled cards on top of slot (1100+).
+    /// Index-based rank in the bottom stack (0 = front card at fixed Y; cards keep their slot as others leave).
+    private func bottomStackRank(for verseID: UUID, index: Int) -> Int? {
+        let startIndex = prominentIndex + 2
+        guard index >= startIndex else { return nil }
+        return index - startIndex
+    }
+
+    /// Vertical offset for cards in the bottom stack. Front card stays at bottomStackThresholdY; positions are index-based so we don’t shift cards as others are pulled. Taper to 0 as minY approaches threshold for smooth transition into angled.
+    private func bottomStackOffset(for verseID: UUID, index: Int) -> CGFloat? {
+        if verseID == effectiveProminentVerseID { return nil }
+        guard let minY = cardMinYs[verseID], minY > bottomStackThresholdY else { return nil }
+        guard let rank = bottomStackRank(for: verseID, index: index) else { return nil }
+        let stackTargetY = bottomStackThresholdY + CGFloat(rank) * bottomStackPixelOffset
+        if minY >= bottomStackThresholdY + bottomStackToAngledTransitionHeight {
+            return stackTargetY - minY
+        }
+        let t = (minY - bottomStackThresholdY) / bottomStackToAngledTransitionHeight
+        let easeIn = 1 - (1 - t) * (1 - t)
+        let targetY = bottomStackThresholdY + (stackTargetY - bottomStackThresholdY) * easeIn
+        return targetY - minY
+    }
+
+    /// zIndex: effective prominent is always 1000. Else hidden top (300), visible top (400+), prominent (1000), angled (1100+), bottom stack (1200+).
     private func cardZIndex(verseID: UUID, index: Int) -> Double {
+        if verseID == effectiveProminentVerseID { return 1000 }
         guard let minY = cardMinYs[verseID] else {
             return index == prominentIndex ? 1000 : 1100 + Double(index)
+        }
+        if minY > bottomStackThresholdY {
+            if let rank = bottomStackRank(for: verseID, index: index) { return 1200 + Double(rank) }
+            return 1200
         }
         if minY < prominenceLine {
             if let idx = stackIndex(for: verseID) { return 400 + Double(idx) }
             return 300
         }
-        if minY >= prominenceLine, minY < prominenceLine + rolodexCardHeight { return 1000 }
+        if minY >= prominenceLine, minY <= angledStartY { return 1000 }
         return 1100 + Double(index)
     }
 
@@ -287,8 +376,7 @@ struct PackDetailView: View {
                                 path.append(verse)
                             }
                             .frame(height: rolodexCardHeight)
-                            .clipped()
-                            .offset(y: stackOff + angledOff + angledOverlapOffset(for: verse.id, index: index, approachingVerseID: approachingProminenceVerseID, transitioningVerseID: transitioningIntoProminenceVerseID))
+                            .offset(y: stackOff + angledOff + (bottomStackOffset(for: verse.id, index: index) ?? 0) + angledOverlapOffset(for: verse.id, index: index, approachingVerseID: approachingProminenceVerseID, transitioningVerseID: transitioningIntoProminenceVerseID))
                             .zIndex(cardZIndex(verseID: verse.id, index: index))
                             .id(verse.id)
                             .background(
@@ -306,8 +394,8 @@ struct PackDetailView: View {
                     }
                 }
                 .padding(.top, prominenceLine)
-                .padding(.horizontal)
-                .padding(.bottom, CGFloat(max(16, filteredVerses.count * 48)))
+                .padding(.horizontal, 20)
+                .padding(.bottom, scrollBottomPaddingAboveFooter + CGFloat(max(16, filteredVerses.count * 48)))
                 .onPreferenceChange(CardFramePreferenceKey.self) { newValue in
                     // Only update when positions changed meaningfully (tolerance avoids feedback loop and jitter).
                     if cardMinYsChanged(newValue, cardMinYs) {
@@ -315,6 +403,13 @@ struct PackDetailView: View {
                     }
                 }
             }
+            .overlay(
+                GeometryReader { geo in
+                    Color.clear.preference(key: ScrollViewHeightKey.self, value: geo.size.height)
+                }
+                .allowsHitTesting(false)
+            )
+            .onPreferenceChange(ScrollViewHeightKey.self) { if $0 > 0 { scrollViewHeight = $0 } }
             .coordinateSpace(name: "scroll")
             .scrollPosition(id: $scrollAnchorID, anchor: .top)
             .onAppear {
@@ -344,6 +439,10 @@ struct PackDetailView: View {
             }
             .padding()
             .background(Color(.systemBackground))
+            .overlay(
+                RoundedRectangle(cornerRadius: 0)
+                    .strokeBorder(Color.orange, lineWidth: 2)
+            )
         }
         .navigationTitle("My Packs")
         .navigationBarTitleDisplayMode(.inline)
@@ -377,7 +476,7 @@ struct PackDetailView: View {
             Text("Are you sure you want to delete \"\(pack.title)\"? All verses will be removed.")
         }
         .fullScreenCover(isPresented: $showMemorization) {
-            MemorizationView(verses: pack.verses.sorted { $0.order < $1.order }, pack: pack)
+            FlashcardView(pack: pack, verses: pack.verses.sorted { $0.order < $1.order })
         }
         .rotation3DEffect(.degrees(-90 + 90 * flipProgress), axis: (x: 0, y: 1, z: 0))
         .scaleEffect(0.95 + 0.05 * flipProgress)
@@ -514,8 +613,6 @@ struct CircularProgressView: View {
 extension View {
     fileprivate func rolodexCardStyle(prominent: Bool = false) -> some View {
         let cornerRadius: CGFloat = prominent ? 12 : 10
-        let shadowRadius: CGFloat = prominent ? 10 : 3
-        let shadowY: CGFloat = prominent ? 6 : 1
         return self
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
             .background(
@@ -526,8 +623,8 @@ extension View {
                             .strokeBorder(Color(.separator), lineWidth: 1)
                     )
             )
-            .drawingGroup()
-            .shadow(color: .black.opacity(prominent ? 0.2 : 0.08), radius: shadowRadius, x: 0, y: shadowY)
+            .compositingGroup()
+            .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
     }
 }
 
