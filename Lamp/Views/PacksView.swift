@@ -3,22 +3,19 @@ import SwiftData
 
 /// Bottom-only rounded shape for wallet-style pack cards.
 private let walletCardShape = UnevenRoundedRectangle(
-    cornerRadii: RectangleCornerRadii(topLeading: 0, bottomLeading: 12, bottomTrailing: 12, topTrailing: 0)
-)
-
-/// Bottom-only rounded shape for the thin peek strip (smaller radius so it fits).
-private let walletPeekShape = UnevenRoundedRectangle(
-    cornerRadii: RectangleCornerRadii(topLeading: 0, bottomLeading: 8, bottomTrailing: 8, topTrailing: 0)
+    cornerRadii: RectangleCornerRadii(topLeading: 0, bottomLeading: 18, bottomTrailing: 18, topTrailing: 0)
 )
 
 private enum WalletCardLayout {
-    static let bottomCornerRadius: CGFloat = 12
+    static let bottomCornerRadius: CGFloat = 18
     static let backLayerInset: CGFloat = 10
-    static let backLayerPeek: CGFloat = 8
+    static let backLayerPeek: CGFloat = 4
     static let backLayerFill = Color(red: 0.55, green: 0.42, blue: 0.30)
     static let frontLayerFill = Color(red: 0.62, green: 0.48, blue: 0.36)
-    /// Clear plastic pocket: inset from pack edges. Kept so (bottomCornerRadius - pocketInset) is a visible radius for concentric bottom corners.
+    /// Clear plastic pocket: inset from pack edges.
     static let pocketInset: CGFloat = 6
+    /// Extra padding above the glass pane to mimic the fold at the top of a real pack.
+    static let pocketTopFoldInset: CGFloat = 14
     /// Pane corner radius: pack radius minus inset so bottom corners are concentric with pack; same value for all four corners.
     static var pocketCornerRadius: CGFloat { max(0, bottomCornerRadius - pocketInset) }
 }
@@ -99,33 +96,46 @@ struct PackCardView: View {
     let action: () -> Void
 
     private var cardContent: some View {
-        VStack(spacing: 0) {
-            // Front layer: main card with clear plastic pocket taking most of the front
-            ZStack {
+        GeometryReader { geo in
+            let totalHeight = geo.size.height
+            let frontHeight = totalHeight - WalletCardLayout.backLayerPeek
+            ZStack(alignment: .top) {
+                // Back layer: full rectangle (same shape as pack) so no gap at corners; 8pt visible below front
                 walletCardShape
-                    .fill(WalletCardLayout.frontLayerFill)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .fill(WalletCardLayout.backLayerFill)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: totalHeight)
+                    .padding(.horizontal, WalletCardLayout.backLayerInset)
+                    .offset(y: WalletCardLayout.backLayerPeek)
 
-                // Inset liquid glass pane (plastic pocket): all four corners rounded; bottom radii concentric with pack.
-                Text(pack.title)
-                    .font(.headline)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(Color(red: 0.18, green: 0.12, blue: 0.08))
-                    .lineLimit(1)
-                    .padding(.horizontal, 12)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .glassEffect()
-                    .clipShape(RoundedRectangle(cornerRadius: WalletCardLayout.pocketCornerRadius))
-                    .padding(WalletCardLayout.pocketInset)
+                // Front layer: main card with glass pocket
+                ZStack {
+                    walletCardShape
+                        .fill(WalletCardLayout.frontLayerFill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    RoundedRectangle(cornerRadius: WalletCardLayout.pocketCornerRadius)
+                        .fill(.clear)
+                        .glassEffect(in: RoundedRectangle(cornerRadius: WalletCardLayout.pocketCornerRadius))
+                        .overlay(
+                            Text(pack.title)
+                                .font(.headline)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(Color(red: 0.18, green: 0.12, blue: 0.08))
+                                .lineLimit(1)
+                                .padding(.horizontal, 12)
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.top, WalletCardLayout.pocketTopFoldInset)
+                        .padding(.horizontal, WalletCardLayout.pocketInset)
+                        .padding(.bottom, WalletCardLayout.pocketInset)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: frontHeight)
+                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
-
-            // Back layer peek: slightly narrower strip with rounded bottom
-            walletPeekShape
-                .fill(WalletCardLayout.backLayerFill)
-                .frame(height: WalletCardLayout.backLayerPeek)
-                .padding(.horizontal, WalletCardLayout.backLayerInset)
+            .frame(maxWidth: .infinity)
+            .frame(height: totalHeight)
         }
     }
 
@@ -148,21 +158,29 @@ struct AddPackCardView: View {
     let action: () -> Void
 
     private var cardContent: some View {
-        VStack(spacing: 0) {
-            // Front layer: main card
-            Image(systemName: "plus")
-                .font(.largeTitle)
-                .foregroundStyle(Color(red: 0.22, green: 0.14, blue: 0.10))
-                .frame(maxWidth: .infinity)
-                .frame(maxHeight: .infinity)
-                .background(walletCardShape.fill(WalletCardLayout.frontLayerFill))
-                .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+        GeometryReader { geo in
+            let totalHeight = geo.size.height
+            let frontHeight = totalHeight - WalletCardLayout.backLayerPeek
+            ZStack(alignment: .top) {
+                // Back layer: full rectangle (same shape as pack) so no gap at corners
+                walletCardShape
+                    .fill(WalletCardLayout.backLayerFill)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: totalHeight)
+                    .padding(.horizontal, WalletCardLayout.backLayerInset)
+                    .offset(y: WalletCardLayout.backLayerPeek)
 
-            // Back layer peek: slightly narrower strip with rounded bottom
-            walletPeekShape
-                .fill(WalletCardLayout.backLayerFill)
-                .frame(height: WalletCardLayout.backLayerPeek)
-                .padding(.horizontal, WalletCardLayout.backLayerInset)
+                // Front layer: main card
+                Image(systemName: "plus")
+                    .font(.largeTitle)
+                    .foregroundStyle(Color(red: 0.22, green: 0.14, blue: 0.10))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: frontHeight)
+                    .background(walletCardShape.fill(WalletCardLayout.frontLayerFill))
+                    .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 2)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: totalHeight)
         }
     }
 
