@@ -1,5 +1,59 @@
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
+
+private enum PackFooterLayout {
+    static let backLayerFill = Color(red: 0.55, green: 0.42, blue: 0.30)
+    static let frontLayerFill = Color(red: 0.62, green: 0.48, blue: 0.36)
+    static let circleButtonFill = Color(red: 0.72, green: 0.58, blue: 0.44)
+    static let reviewButtonFill = Color(red: 0.35, green: 0.26, blue: 0.18)
+    static let iconButtonSize: CGFloat = 44
+    static let reviewCornerRadius: CGFloat = 14
+    /// Back layer height: footer + enough to peek above front and slightly behind bottom cards (pocket).
+    static let pocketBackHeight: CGFloat = 250
+    /// Inset of the front footer from the back on all edges (6pt gap between front and back).
+    static let frontInset: CGFloat = 6
+    /// How much the back layer sticks above the front (pocket lip).
+    static let backPeekAboveFront: CGFloat = 12
+    /// Minimum bottom spacer so content stays above tab bar when safe area isn't reported (e.g. with ignoresSafeArea).
+    static let minBottomSpacer: CGFloat = 84
+    /// Fallback display corner radius when device value isn't available (e.g. Simulator, or if not using device corner API).
+    static let screenCornerRadius: CGFloat = 59
+}
+
+/// Reads the device display corner radius when available so footer corners can be concentric with the screen.
+/// Uses a UIScreen from the current window scene (avoids deprecated UIScreen.main). Falls back to `PackFooterLayout.screenCornerRadius` if unavailable. Uses private `_displayCornerRadius` key—Apple may reject; remove that call if needed.
+private enum DisplayCornerRadius {
+    static func read() -> CGFloat {
+        #if os(iOS)
+        let screen = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?
+            .screen
+        if let screen,
+           let value = screen.value(forKey: "_displayCornerRadius") as? CGFloat,
+           value > 0 {
+            return value
+        }
+        #endif
+        return PackFooterLayout.screenCornerRadius
+    }
+}
+
+/// Back layer (pocket): sharp top; bottom corners concentric with screen.
+private func packFooterShape(cornerRadius: CGFloat = PackFooterLayout.screenCornerRadius) -> UnevenRoundedRectangle {
+    UnevenRoundedRectangle(
+        cornerRadii: RectangleCornerRadii(topLeading: 0, bottomLeading: cornerRadius, bottomTrailing: cornerRadius, topTrailing: 0)
+    )
+}
+/// Front layer (top rectangle): sharp top; bottom corners concentric with screen (radius = screen − inset).
+private func packFrontShape(cornerRadius: CGFloat = PackFooterLayout.screenCornerRadius - PackFooterLayout.frontInset) -> UnevenRoundedRectangle {
+    UnevenRoundedRectangle(
+        cornerRadii: RectangleCornerRadii(topLeading: 0, bottomLeading: cornerRadius, bottomTrailing: cornerRadius, topTrailing: 0)
+    )
+}
 
 /// Shared card dimensions for verse cards. Used by PackDetailView (rolodex) and FlashcardView so one edit updates both.
 enum VerseCardLayout {
@@ -16,7 +70,18 @@ private struct CardFramePreferenceKey: PreferenceKey {
 }
 
 /// Reports the scroll view’s visible height so the bottom stack can be placed with only 6pt of the bottommost card visible.
+private struct SafeAreaBottomKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 private struct ScrollViewHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Footer height so the back layer can be sized to stick above by backPeekAboveFront only.
+private struct FooterHeightKey: PreferenceKey {
     static var defaultValue: CGFloat { 0 }
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
@@ -33,6 +98,7 @@ private func cardMinYsChanged(_ newValue: [UUID: CGFloat], _ old: [UUID: CGFloat
 
 struct PackDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Bindable var pack: Pack
     @Binding var path: NavigationPath
     @State private var searchText = ""
@@ -55,6 +121,9 @@ struct PackDetailView: View {
         guard !withHealth.isEmpty else { return 0 }
         return withHealth.reduce(0, +) / Double(withHealth.count)
     }
+
+    /// Device display corner radius so footer bottom corners stay concentric with the screen.
+    private var displayCornerRadius: CGFloat { DisplayCornerRadius.read() }
 
     /// 3D tilt: top edge recedes into screen, bottom edge toward viewer (rotation around X axis).
     private let rolodexTilt: Double = -12
@@ -99,7 +168,7 @@ struct PackDetailView: View {
         return h - bottomStackVisibleSliver - CGFloat(n - 1) * bottomStackPixelOffset
     }
     /// Extra bottom padding so the bottom stack stays visible above the pack footer when scrolled.
-    private let scrollBottomPaddingAboveFooter: CGFloat = 120
+    private let scrollBottomPaddingAboveFooter: CGFloat = 130
     /// Vertical offset per card in the bottom stack (same as top). Front card stays at fixed Y; positions are index-based so cards don’t shift as others leave.
     private let bottomStackPixelOffset: CGFloat = 6
     /// Distance over which a card tapers between flat and angled at top or bottom. Same value for equivalent feel.
@@ -114,6 +183,8 @@ struct PackDetailView: View {
     @State private var cardMinYs: [UUID: CGFloat] = [:]
     /// Scroll view’s visible height (from GeometryReader) so we can place the bottom stack with only 6pt of the bottommost card visible.
     @State private var scrollViewHeight: CGFloat = 0
+    @State private var bottomSafeArea: CGFloat = 0
+    @State private var footerHeight: CGFloat = 0
 
     /// Index of the verse currently in prominence (at the top of the scroll).
     private var prominentIndex: Int {
@@ -340,14 +411,22 @@ struct PackDetailView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            TextField("Search this Pack:", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-                .background(Color(.secondarySystemBackground))
+        ZStack(alignment: .bottom) {
+            // Back layer (pocket): behind footer; height = front + 6pt so only 6pt sticks above
+            packFooterShape(cornerRadius: displayCornerRadius)
+                .fill(PackFooterLayout.backLayerFill)
+                .frame(maxWidth: .infinity)
+                .frame(height: footerHeight > 0 ? footerHeight + PackFooterLayout.backPeekAboveFront : PackFooterLayout.pocketBackHeight)
+                .frame(maxHeight: .infinity, alignment: .bottom)
 
-            ScrollView(.vertical, showsIndicators: true) {
+            VStack(spacing: 0) {
+                TextField("Search this Pack:", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                    .background(Color(.secondarySystemBackground))
+
+                ScrollView(.vertical, showsIndicators: true) {
                 VStack(spacing: 0) {
                     if filteredVerses.isEmpty {
                         Button {
@@ -429,27 +508,78 @@ struct PackDetailView: View {
                 }
             }
 
-            VStack(spacing: 12) {
-                Text(pack.title)
-                    .font(.title2.weight(.semibold))
-                Text("\(pack.verses.count) verses | \(Int(averageMemoryHealth * 100))% avg memory health")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Button("Review") {
-                    showMemorization = true
+                // Front footer: inset 6pt from back; content at top, rectangles extend to screen bottom
+                ZStack {
+                    VStack(spacing: 0) {
+                        // One row: close + title/subtitle on left, Review button on right
+                        HStack(alignment: .center, spacing: 14) {
+                                Button {
+                                    dismiss()
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(.body, design: .rounded).weight(.semibold))
+                                        .foregroundStyle(PackFooterLayout.frontLayerFill)
+                                        .frame(width: PackFooterLayout.iconButtonSize, height: PackFooterLayout.iconButtonSize)
+                                        .background(Circle().fill(PackFooterLayout.circleButtonFill))
+                                }
+                                .buttonStyle(.plain)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(pack.title)
+                                        .font(.system(.title2, design: .rounded).weight(.bold))
+                                        .foregroundStyle(.white)
+                                        .multilineTextAlignment(.leading)
+                                    Text("\(pack.verses.count) verses | \(Int(averageMemoryHealth * 100))% avg memory health")
+                                        .font(.system(.subheadline, design: .rounded))
+                                        .foregroundStyle(.white.opacity(0.9))
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                Button {
+                                    showMemorization = true
+                                } label: {
+                                    Text("Review")
+                                        .font(.system(.body, design: .rounded).weight(.semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 24)
+                                        .padding(.vertical, 14)
+                                }
+                                .background(
+                                    RoundedRectangle(cornerRadius: PackFooterLayout.reviewCornerRadius)
+                                        .fill(PackFooterLayout.reviewButtonFill)
+                                )
+                                .buttonStyle(.plain)
+                                .disabled(pack.verses.isEmpty)
+                                .opacity(pack.verses.isEmpty ? 0.6 : 1)
+                            }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 20)
+
+                        // Spacer so rectangles extend to screen bottom; content stays above tab bar
+                        Color.clear.frame(height: max(bottomSafeArea, PackFooterLayout.minBottomSpacer))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .background(packFrontShape(cornerRadius: max(0, displayCornerRadius - PackFooterLayout.frontInset)).fill(PackFooterLayout.frontLayerFill))
+                    .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: -2)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .frame(maxWidth: .infinity)
-                .disabled(pack.verses.isEmpty)
+                .padding(PackFooterLayout.frontInset)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear.preference(key: FooterHeightKey.self, value: geo.size.height)
+                    }
+                    .allowsHitTesting(false)
+                )
             }
-            .padding()
-            .background(Color(.systemBackground))
-            .overlay(
-                RoundedRectangle(cornerRadius: 0)
-                    .strokeBorder(Color.orange, lineWidth: 2)
-            )
         }
+        .onPreferenceChange(FooterHeightKey.self) { footerHeight = $0 }
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: SafeAreaBottomKey.self, value: geo.safeAreaInsets.bottom)
+            }
+            .allowsHitTesting(false)
+        )
+        .onPreferenceChange(SafeAreaBottomKey.self) { bottomSafeArea = $0 }
+        .ignoresSafeArea(edges: .bottom)
         .navigationTitle("My Packs")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
