@@ -570,6 +570,7 @@ struct PackDetailView: View {
             .ignoresSafeArea(edges: .bottom)
             .navigationTitle("My Packs")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
             .toolbar { bodyToolbarContent }
             .sheet(isPresented: $showAddVerse) {
                 AddVerseView(pack: pack, isPresented: $showAddVerse)

@@ -3,8 +3,8 @@ import SwiftData
 
 // MARK: - Neumorphism Design System
 // Based on https://hackingwithswift.com/articles/213/how-to-build-neumorphic-designs-with-swiftui
-// Key: elements are the SAME color as the background. Depth comes only from shadows.
-// Light source: top-left. Dark shadow is cast further than light highlight (asymmetric).
+// Elements are the SAME color as the background. Depth comes only from shadows.
+// Light source: top-left. Dark shadow cast further than light highlight (asymmetric).
 
 private extension Color {
     static let neuBg = Color(red: 225 / 255, green: 225 / 255, blue: 235 / 255)
@@ -18,33 +18,34 @@ private extension LinearGradient {
 
 private let neuCorner: CGFloat = 22
 
-// MARK: - Neumorphic Shapes
+// MARK: - Neumorphic Primitives
 
-/// A raised neumorphic surface -- looks like it's extruded from the background.
-private struct NeuRaisedShape<S: Shape>: View {
+/// Raised surface -- extruded from the background with flat fill.
+private struct NeuRaised<S: Shape>: View {
     var shape: S
+    var radius: CGFloat = 10
+    var distance: CGFloat = 10
+
     var body: some View {
         shape
             .fill(Color.neuBg)
-            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 10, y: 10)
-            .shadow(color: Color.white.opacity(0.7), radius: 10, x: -5, y: -5)
+            .shadow(color: Color.black.opacity(0.2), radius: radius, x: distance, y: distance)
+            .shadow(color: Color.white.opacity(0.7), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
     }
 }
 
-/// An inset/pressed neumorphic surface -- looks like it's pushed into the background.
-/// Uses the blur+gradient-mask technique for realistic inner shadows.
-private struct NeuInsetShape<S: Shape>: View {
+/// Inset surface -- pressed into the background (blur + gradient-mask inner shadow).
+private struct NeuInset<S: Shape>: View {
     var shape: S
+
     var body: some View {
         ZStack {
             shape.fill(Color.neuBg)
-            // Dark inner shadow (bottom-right)
             shape
                 .stroke(Color.gray.opacity(0.5), lineWidth: 4)
                 .blur(radius: 4)
                 .offset(x: 2, y: 2)
                 .mask(shape.fill(LinearGradient(Color.black, Color.clear)))
-            // Light inner shadow (top-left)
             shape
                 .stroke(Color.white, lineWidth: 6)
                 .blur(radius: 4)
@@ -104,60 +105,59 @@ struct PacksView: View {
         }
     }
 
+    // MARK: Title Header
+
+    private var titleHeader: some View {
+        Text("My Packs")
+            .font(.system(size: 30, weight: .bold))
+            .foregroundStyle(Color(white: 0.18))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 20)
+            .padding(.bottom, 4)
+    }
+
     // MARK: Layouts
 
     private var thirdsLayout: some View {
-        GeometryReader { geo in
-            let vPad: CGFloat = 16
-            let hPad: CGFloat = 24
-            let spacing: CGFloat = 28
-            let count: CGFloat = packs.isEmpty ? 1 : CGFloat(packs.count + 1)
-            let gaps = max(0, count - 1) * spacing
-            let avH = geo.size.height - 2 * vPad - gaps
-            let avW = geo.size.width - 2 * hPad
-            let hByV = avH / count
-            let hByW = avW * 2 / 3
-            let cardH = min(hByV, hByW)
-            let cardW = cardH * 3 / 2
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: spacing) {
-                    if packs.isEmpty {
-                        NeuAddCard { showAddPack = true }
-                            .frame(width: cardW, height: cardH)
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        ForEach(packs) { pack in
-                            NeuPackCard(pack: pack, action: { path.append(pack) }, onLongPress: {
-                                packForAction = pack
-                                showActionDialog = true
-                            })
-                            .frame(width: cardW, height: cardH)
-                            .frame(maxWidth: .infinity)
-                        }
-                        NeuAddCard { showAddPack = true }
-                            .frame(width: cardW, height: cardH)
-                            .frame(maxWidth: .infinity)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 20) {
+                titleHeader
+
+                if packs.isEmpty {
+                    NeuAddCard { showAddPack = true }
+                } else {
+                    ForEach(packs) { pack in
+                        NeuPackCard(pack: pack, action: { path.append(pack) }, onLongPress: {
+                            packForAction = pack
+                            showActionDialog = true
+                        })
                     }
+                    NeuAddCard { showAddPack = true }
                 }
-                .padding(.vertical, vPad)
-                .padding(.horizontal, hPad)
             }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 80) // clear the floating tab bar
         }
         .background(Color.neuBg)
     }
 
     private var gridLayout: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 24) {
-                ForEach(packs) { pack in
-                    NeuPackCard(pack: pack, action: { path.append(pack) }, onLongPress: {
-                        packForAction = pack
-                        showActionDialog = true
-                    })
+            VStack(spacing: 20) {
+                titleHeader
+
+                LazyVGrid(columns: columns, spacing: 24) {
+                    ForEach(packs) { pack in
+                        NeuPackCard(pack: pack, action: { path.append(pack) }, onLongPress: {
+                            packForAction = pack
+                            showActionDialog = true
+                        })
+                    }
+                    NeuAddCard { showAddPack = true }
                 }
-                NeuAddCard { showAddPack = true }
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 80)
         }
         .background(Color.neuBg)
     }
@@ -190,61 +190,121 @@ struct PacksView: View {
     }
 }
 
-// MARK: - Neumorphic Pack Card
+// MARK: - Pack Card (Pocket Holding Cards)
+//
+// Modelled after a physical verse card pocket:
+//   - Full-size card rectangles z-stacked behind a front pocket panel
+//   - Each card is offset slightly upward so its top edge peeks above the one in front
+//   - The pocket covers the bottom ~60%, hiding most of each card
+//   - Sharp top edge on the pocket (the slot opening), rounded bottom
 
 private struct NeuPackCard: View {
     let pack: Pack
     let action: () -> Void
     var onLongPress: (() -> Void)? = nil
 
-    private let shape = RoundedRectangle(cornerRadius: neuCorner, style: .continuous)
-    private let insetShape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+    // Pocket: sharp top (card slot opening), rounded bottom
+    private let pocketShape = UnevenRoundedRectangle(
+        topLeadingRadius: 3, bottomLeadingRadius: neuCorner,
+        bottomTrailingRadius: neuCorner, topTrailingRadius: 3,
+        style: .continuous
+    )
+    private let cardShape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+
+    private var verseCount: Int { pack.verses.count }
+    // Show up to 3 full card shapes behind the pocket
+    private var cardCount: Int { min(verseCount, 3) }
 
     var body: some View {
         cardBody
-            .aspectRatio(3/2, contentMode: .fit)
+            .aspectRatio(2.0 / 1.0, contentMode: .fit)
             .contentShape(.rect)
             .onTapGesture { action() }
             .onLongPressGesture(minimumDuration: 0.5) { onLongPress?() }
     }
 
     private var cardBody: some View {
-        ZStack {
-            // Raised card surface
-            NeuRaisedShape(shape: shape)
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
 
-            VStack(spacing: 14) {
-                Spacer()
+            // Each item (back + cards) gets one peek step above the pocket
+            let peekPerItem = max(6, h * 0.07)
+            let totalItems = 1 + cardCount     // 1 back panel + N verse cards
+            let totalPeek = CGFloat(totalItems) * peekPerItem
+            let pocketH = h - totalPeek
+            let pocketW = w
+            let pocketTopY = totalPeek
 
-                // Title in an inset well
-                Text(pack.title)
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
-                    .foregroundStyle(Color.black.opacity(0.6))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(NeuInsetShape(shape: insetShape))
-                    .clipShape(insetShape)
+            let cardW = pocketW - 12
+            let cardH = pocketH
 
-                // Verse count in a small inset pill
-                Text("\(pack.verses.count) verse\(pack.verses.count == 1 ? "" : "s")")
-                    .font(.system(.caption, design: .rounded).weight(.medium))
-                    .foregroundStyle(Color.black.opacity(0.35))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(NeuInsetShape(shape: Capsule()))
-                    .clipShape(Capsule())
+            ZStack {
+                // 1. Back panel (always present -- the holder back, lowest z)
+                NeuRaised(shape: cardShape, radius: 8, distance: 8)
+                    .frame(width: cardW, height: cardH)
+                    .position(x: w / 2, y: cardH / 2)
 
-                Spacer()
+                // 2. Verse cards z-stacked in front of the back
+                if cardCount > 0 {
+                    cardsLayer(
+                        w: w, pocketTopY: pocketTopY,
+                        cardW: cardW, cardH: cardH,
+                        peekPerItem: peekPerItem
+                    )
+                }
+
+                // 3. Pocket front panel (highest z -- covers card bodies)
+                NeuRaised(shape: pocketShape)
+                    .frame(width: pocketW, height: pocketH)
+                    .position(x: w / 2, y: pocketTopY + pocketH / 2)
+
+                // 4. Title + verse count on the pocket face
+                titleLayer(w: w, pocketTopY: pocketTopY, pocketH: pocketH, pocketW: pocketW, h: h)
             }
-            .padding(18)
         }
+    }
+
+    // MARK: Cards
+
+    @ViewBuilder
+    private func cardsLayer(
+        w: CGFloat, pocketTopY: CGFloat,
+        cardW: CGFloat, cardH: CGFloat,
+        peekPerItem: CGFloat
+    ) -> some View {
+        ForEach(0..<cardCount, id: \.self) { i in
+            // Back card (i=0) peeks the most, front card peeks the least.
+            // Offset by 1 because slot 0 is the back panel.
+            let cardTopY = CGFloat(1 + i) * peekPerItem
+
+            NeuRaised(shape: cardShape, radius: 8, distance: 8)
+                .frame(width: cardW, height: cardH)
+                .position(x: w / 2, y: cardTopY + cardH / 2)
+        }
+    }
+
+    // MARK: Title
+
+    @ViewBuilder
+    private func titleLayer(w: CGFloat, pocketTopY: CGFloat, pocketH: CGFloat, pocketW: CGFloat, h: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            Text(pack.title)
+                .font(.system(h > 140 ? .title3 : .headline, design: .rounded).weight(.semibold))
+                .foregroundStyle(Color.black.opacity(0.55))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+
+            Text("\(verseCount) verse\(verseCount == 1 ? "" : "s")")
+                .font(.system(h > 140 ? .subheadline : .caption, design: .rounded).weight(.medium))
+                .foregroundStyle(Color.black.opacity(0.28))
+        }
+        .frame(width: pocketW - 32)
+        .position(x: w / 2, y: pocketTopY + pocketH * 0.5)
     }
 }
 
-// MARK: - Neumorphic Add Card
+// MARK: - Add Card
 
 private struct NeuAddCard: View {
     let action: () -> Void
@@ -254,24 +314,24 @@ private struct NeuAddCard: View {
     var body: some View {
         Button(action: action) {
             cardBody
-                .aspectRatio(3/2, contentMode: .fit)
+                .aspectRatio(2.0 / 1.0, contentMode: .fit)
         }
         .buttonStyle(.plain)
     }
 
     private var cardBody: some View {
         ZStack {
-            // Raised card surface
-            NeuRaisedShape(shape: shape)
+            // Simple raised card (no pocket -- it's a CTA, not a pack)
+            NeuRaised(shape: shape)
 
             VStack(spacing: 12) {
                 // Raised circular plus button
                 ZStack {
-                    NeuRaisedShape(shape: Circle())
-                        .frame(width: 52, height: 52)
+                    NeuRaised(shape: Circle(), radius: 5, distance: 5)
+                        .frame(width: 48, height: 48)
 
                     Image(systemName: "plus")
-                        .font(.system(size: 20, weight: .medium, design: .rounded))
+                        .font(.system(size: 18, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.black.opacity(0.35))
                 }
 
