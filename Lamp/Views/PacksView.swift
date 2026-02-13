@@ -29,6 +29,11 @@ struct PacksView: View {
     @Binding var path: NavigationPath
     @Binding var showAddPack: Bool
 
+    @State private var packForAction: Pack?
+    @State private var showActionDialog = false
+    @State private var showRenameSheet = false
+    @State private var renameText = ""
+
     private let columns = [
         GridItem(.flexible(), spacing: 16),
         GridItem(.flexible(), spacing: 16)
@@ -38,40 +43,106 @@ struct PacksView: View {
     private var useThirdsLayout: Bool { packs.count <= 2 }
 
     var body: some View {
-        if useThirdsLayout {
-            thirdsLayout
-        } else {
-            gridLayout
+        Group {
+            if useThirdsLayout {
+                thirdsLayout
+            } else {
+                gridLayout
+            }
+        }
+        .confirmationDialog("Pack", isPresented: $showActionDialog, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                if let pack = packForAction {
+                    modelContext.delete(pack)
+                    try? modelContext.save()
+                }
+                packForAction = nil
+            }
+            Button("Rename") {
+                renameText = packForAction?.title ?? ""
+                showRenameSheet = true
+            }
+            Button("Cancel", role: .cancel) {
+                packForAction = nil
+            }
+        } message: {
+            Text(packForAction.map { "\"\($0.title)\"" } ?? "")
+        }
+        .sheet(isPresented: $showRenameSheet, onDismiss: { packForAction = nil }) {
+            NavigationStack {
+                Form {
+                    TextField("Pack name", text: $renameText)
+                }
+                .navigationTitle("Rename Pack")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showRenameSheet = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            if let pack = packForAction, !renameText.trimmingCharacters(in: .whitespaces).isEmpty {
+                                pack.title = renameText.trimmingCharacters(in: .whitespaces)
+                                try? modelContext.save()
+                            }
+                            showRenameSheet = false
+                        }
+                        .disabled(renameText.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
         }
     }
 
     private var thirdsLayout: some View {
         GeometryReader { geo in
-            let thirdHeight = geo.size.height / 3
+            let verticalPadding: CGFloat = 16
             let horizontalPadding: CGFloat = 24
+            let cardSpacing: CGFloat = 20
+            let cardCount: CGFloat = packs.isEmpty ? 1 : CGFloat(packs.count + 1)
+            let gaps = max(0, cardCount - 1) * cardSpacing
+            let availableHeight = geo.size.height - (2 * verticalPadding) - gaps
+            let availableWidth = geo.size.width - (2 * horizontalPadding)
+            // Lock 2:3 vertical:horizontal — fit both dimensions
+            let maxHeightByVertical = availableHeight / cardCount
+            let maxHeightByWidth = availableWidth * 2 / 3 // so width = height * 3/2 ≤ availableWidth
+            let cardHeight = min(maxHeightByVertical, maxHeightByWidth)
+            let cardWidth = cardHeight * 3 / 2
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 20) {
+                VStack(spacing: cardSpacing) {
                     if packs.isEmpty {
                         AddPackCardView(fillHeight: true) { showAddPack = true }
-                            .frame(height: thirdHeight)
-                            .padding(.horizontal, horizontalPadding)
+                            .frame(width: cardWidth, height: cardHeight)
+                            .frame(maxWidth: .infinity)
                     } else {
                         if let first = packs.first {
-                            PackCardView(pack: first, fillHeight: true) { path.append(first) }
-                                .frame(height: thirdHeight)
-                                .padding(.horizontal, horizontalPadding)
+                            PackCardView(pack: first, fillHeight: true, action: { path.append(first) }, onLongPress: {
+                                packForAction = first
+                                showActionDialog = true
+                            })
+                                .frame(width: cardWidth, height: cardHeight)
+                                .frame(maxWidth: .infinity)
+                                .clipped()
                         }
                         if packs.count >= 2, let second = packs.dropFirst().first {
-                            PackCardView(pack: second, fillHeight: true) { path.append(second) }
-                                .frame(height: thirdHeight)
-                                .padding(.horizontal, horizontalPadding)
+                            PackCardView(pack: second, fillHeight: true, action: { path.append(second) }, onLongPress: {
+                                packForAction = second
+                                showActionDialog = true
+                            })
+                                .frame(width: cardWidth, height: cardHeight)
+                                .frame(maxWidth: .infinity)
+                                .clipped()
                         }
                         AddPackCardView(fillHeight: true) { showAddPack = true }
-                            .frame(height: thirdHeight)
-                            .padding(.horizontal, horizontalPadding)
+                            .frame(width: cardWidth, height: cardHeight)
+                            .frame(maxWidth: .infinity)
+                            .clipped()
                     }
                 }
-                .padding(.vertical, 16)
+                .padding(.vertical, verticalPadding)
+                .padding(.horizontal, horizontalPadding)
             }
         }
     }
@@ -80,9 +151,10 @@ struct PacksView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 16) {
                 ForEach(packs) { pack in
-                    PackCardView(pack: pack, fillHeight: false) {
-                        path.append(pack)
-                    }
+                    PackCardView(pack: pack, fillHeight: false, action: { path.append(pack) }, onLongPress: {
+                        packForAction = pack
+                        showActionDialog = true
+                    })
                 }
                 AddPackCardView(fillHeight: false) {
                     showAddPack = true
@@ -97,6 +169,7 @@ struct PackCardView: View {
     let pack: Pack
     let fillHeight: Bool
     let action: () -> Void
+    var onLongPress: (() -> Void)? = nil
 
     private var cardContent: some View {
         GeometryReader { geo in
@@ -122,7 +195,8 @@ struct PackCardView: View {
                         .glassEffect(in: RoundedRectangle(cornerRadius: WalletCardLayout.pocketCornerRadius))
                         .overlay(
                             Text(pack.title)
-                                .font(.system(.largeTitle, design: .rounded))
+                                .font(.system(size: min(geo.size.width, geo.size.height) * 0.14, design: .rounded))
+                                .minimumScaleFactor(0.6)
                                 .multilineTextAlignment(.center)
                                 .foregroundStyle(Color.black)
                                 .lineLimit(1)
@@ -143,16 +217,18 @@ struct PackCardView: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            Group {
-                if fillHeight {
-                    cardContent.frame(maxHeight: .infinity)
-                } else {
-                    cardContent.aspectRatio(3/4, contentMode: .fit)
-                }
+        Group {
+            if fillHeight {
+                cardContent.frame(maxHeight: .infinity)
+            } else {
+                cardContent.aspectRatio(3/2, contentMode: .fit) // 2:3 vertical:horizontal for grid
             }
         }
-        .buttonStyle(.plain)
+        .contentShape(.rect)
+        .onTapGesture { action() }
+        .onLongPressGesture(minimumDuration: 0.5) {
+            onLongPress?()
+        }
     }
 }
 
@@ -184,7 +260,7 @@ struct AddPackCardView: View {
                         .glassEffect(in: RoundedRectangle(cornerRadius: WalletCardLayout.pocketCornerRadius))
                         .overlay(
                             Image(systemName: "plus")
-                                .font(.largeTitle)
+                                .font(.system(size: min(geo.size.width, geo.size.height) * 0.2, design: .rounded))
                                 .foregroundStyle(.white)
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -207,7 +283,7 @@ struct AddPackCardView: View {
                 if fillHeight {
                     cardContent.frame(maxHeight: .infinity)
                 } else {
-                    cardContent.aspectRatio(3/4, contentMode: .fit)
+                    cardContent.aspectRatio(3/2, contentMode: .fit) // 2:3 vertical:horizontal for grid
                 }
             }
         }

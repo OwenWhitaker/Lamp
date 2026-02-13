@@ -58,7 +58,7 @@ private func packFrontShape(cornerRadius: CGFloat = PackFooterLayout.screenCorne
 /// Shared card dimensions for verse cards. Used by PackDetailView (rolodex) and FlashcardView so one edit updates both.
 enum VerseCardLayout {
     static let cardHeight: CGFloat = 160
-    static let horizontalPadding: CGFloat = 20
+    static let horizontalPadding: CGFloat = 12
 }
 
 /// Collects each card's minY in the scroll coordinate space for live tilt.
@@ -76,6 +76,11 @@ private struct SafeAreaBottomKey: PreferenceKey {
 }
 
 private struct ScrollViewHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+private struct ScrollViewWidthKey: PreferenceKey {
     static var defaultValue: CGFloat { 0 }
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
@@ -106,6 +111,7 @@ struct PackDetailView: View {
     @State private var showMemorization = false
     @State private var showAddVerse = false
     @State private var flipProgress: Double = 0
+    @State private var scrollContentWidth: CGFloat = 0
 
     private var filteredVerses: [Verse] {
         let list = pack.verses.sorted { $0.order < $1.order }
@@ -128,8 +134,11 @@ struct PackDetailView: View {
     /// 3D tilt: top edge recedes into screen, bottom edge toward viewer (rotation around X axis).
     private let rolodexTilt: Double = -12
 
-    /// Fixed height for all cards so they are uniform in the stack. Sourced from VerseCardLayout so flashcard and pack detail stay in sync.
-    private var rolodexCardHeight: CGFloat { VerseCardLayout.cardHeight }
+    /// Height for all cards: 2:3 aspect ratio (height:width) from content width; fallback to VerseCardLayout when width not yet known. Clamped to avoid invalid frame dimensions.
+    private var rolodexCardHeight: CGFloat {
+        let h = scrollContentWidth > 0 ? scrollContentWidth * 2 / 3 : VerseCardLayout.cardHeight
+        return max(44, h)
+    }
 
     /// Spacer between cards in the rolodex (angled cards use normal spacing; no condensed overlap).
     private let rolodexStackOverlap: CGFloat = 12
@@ -158,21 +167,22 @@ struct PackDetailView: View {
     private let bottomStackVisibleSliver: CGFloat = 6
     /// Fallback when scroll height isn’t available yet; use a typical viewport height so the stack starts low.
     private let scrollViewHeightFallback: CGFloat = 580
-    /// Y below which cards sit in the "bottom stack". Positioned so only the top `bottomStackVisibleSliver` of the bottommost card shows above the footer.
+    /// Y below which cards sit in the "bottom stack". Positioned so only the top `bottomStackVisibleSliver` of the bottommost card shows above the footer. Clamped to avoid invalid layout.
     private var bottomStackThresholdY: CGFloat {
         let justBelow = prominenceLine + rolodexCardHeight
         let base = justBelow + 1 * (rolodexCardHeight + rolodexStackOverlap)
         let h = scrollViewHeight > 0 ? scrollViewHeight : scrollViewHeightFallback
         let n = max(0, filteredVerses.count - prominentIndex - 2)
         guard n > 0 else { return base }
-        return h - bottomStackVisibleSliver - CGFloat(n - 1) * bottomStackPixelOffset
+        let y = h - bottomStackVisibleSliver - CGFloat(n - 1) * bottomStackPixelOffset
+        return max(base, y)
     }
     /// Extra bottom padding so the bottom stack stays visible above the pack footer when scrolled.
     private let scrollBottomPaddingAboveFooter: CGFloat = 130
     /// Vertical offset per card in the bottom stack (same as top). Front card stays at fixed Y; positions are index-based so cards don’t shift as others leave.
     private let bottomStackPixelOffset: CGFloat = 6
-    /// Distance over which a card tapers between flat and angled at top or bottom. Same value for equivalent feel.
-    private let topStackToAngledTransitionHeight: CGFloat = 40
+    /// Distance over which a card tapers between flat and angled at top or bottom.
+    private let topStackToAngledTransitionHeight: CGFloat = 120
     /// Distance over which a card tapers from bottom-stack position into angled (scroll-driven).
     private let bottomStackToAngledTransitionHeight: CGFloat = 40
 
@@ -285,16 +295,40 @@ struct PackDetailView: View {
         }
         if minY <= prominenceLine { return 0 }
         if minY > bottomStackThresholdY { return 0 }
-        // Only smooth the angled → prominent/top stack transition
+        // Smooth the angled → prominent/top stack transition with ease-in curve
         if minY < angledStartY {
             let rampHeight = angledStartY - prominenceLine
             let t = Double((minY - prominenceLine) / rampHeight)
-            return rolodexTilt * smoothstep(t)
+            // Ease-in: card stays flat longer near prominence, then tilts more quickly further away
+            let eased = t * t * (3 - 2 * t) // smoothstep
+            return rolodexTilt * eased
         }
         let band = bottomStackThresholdY - angledStartY
         guard band > 0 else { return rolodexTilt }
         let t = Double((minY - angledStartY) / band)
         return rolodexTilt * (1 - min(1, max(0, t)))
+    }
+
+    /// Scale: 1.0 at prominence, slightly smaller when angled or in the stack. Gives visual depth to the transition.
+    private let angledScale: CGFloat = 0.96
+    private let stackScale: CGFloat = 0.97
+    private func cardScale(for verseID: UUID, index: Int) -> CGFloat {
+        if verseID == effectiveProminentVerseID { return 1.0 }
+        guard let minY = cardMinYs[verseID] else {
+            return index == prominentIndex ? 1.0 : angledScale
+        }
+        // In the top stack (above prominence)
+        if minY <= prominenceLine { return stackScale }
+        // In the bottom stack
+        if minY > bottomStackThresholdY { return stackScale }
+        // Transition zone: flat → angled
+        if minY < angledStartY {
+            let t = CGFloat((minY - prominenceLine) / (angledStartY - prominenceLine))
+            let eased = CGFloat(smoothstep(Double(t)))
+            return 1.0 - eased * (1.0 - angledScale)
+        }
+        // Fully angled area
+        return angledScale
     }
 
     /// All cards with minY < prominenceLine, sorted by minY ascending (index 0 = oldest = rank 0).
@@ -392,6 +426,14 @@ struct PackDetailView: View {
         return targetY - minY
     }
 
+    private var backPocketLayer: some View {
+        packFooterShape(cornerRadius: displayCornerRadius)
+            .fill(PackFooterLayout.backLayerFill)
+            .frame(maxWidth: .infinity)
+            .frame(height: max(1, footerHeight > 0 ? footerHeight + PackFooterLayout.backPeekAboveFront : PackFooterLayout.pocketBackHeight))
+            .frame(maxHeight: .infinity, alignment: .bottom)
+    }
+
     /// zIndex: effective prominent is always 1000. Else hidden top (300), visible top (400+), prominent (1000), angled (1100+), bottom stack (1200+).
     private func cardZIndex(verseID: UUID, index: Int) -> Double {
         if verseID == effectiveProminentVerseID { return 1000 }
@@ -410,91 +452,101 @@ struct PackDetailView: View {
         return 1100 + Double(index)
     }
 
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            // Back layer (pocket): behind footer; height = front + 6pt so only 6pt sticks above
-            packFooterShape(cornerRadius: displayCornerRadius)
-                .fill(PackFooterLayout.backLayerFill)
-                .frame(maxWidth: .infinity)
-                .frame(height: footerHeight > 0 ? footerHeight + PackFooterLayout.backPeekAboveFront : PackFooterLayout.pocketBackHeight)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-
-            VStack(spacing: 0) {
-                TextField("Search this Pack:", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal)
-                    .padding(.vertical, 10)
-                    .background(Color(.secondarySystemBackground))
-
-                ScrollView(.vertical, showsIndicators: true) {
-                VStack(spacing: 0) {
-                    if filteredVerses.isEmpty {
-                        Button {
-                            showAddVerse = true
-                        } label: {
-                            VStack(spacing: 8) {
-                                Text("No verses")
-                                    .font(.headline)
-                                Text("Tap + to add verses")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .padding()
-                        }
-                        .buttonStyle(.plain)
-                        .rolodexCardStyle()
-                        .frame(height: rolodexCardHeight)
-                    } else {
-                        ForEach(Array(filteredVerses.enumerated()), id: \.element.id) { index, verse in
-                            let factor = prominenceFactor(for: verse.id, index: index)
-                            let tilt = tiltDegrees(for: verse.id, index: index)
-                            let stackOff = stackOffset(for: verse.id) ?? 0
-                            let angledOff = angledVisualOffset(for: verse.id, approachingVerseID: approachingProminenceVerseID, transitioningVerseID: transitioningIntoProminenceVerseID)
-                            let isProminent = factor > 0.5
-                            RolodexCardView(
-                                verse: verse,
-                                showFullVerse: true,
-                                tiltDegrees: tilt,
-                                isProminent: isProminent
-                            ) {
-                                path.append(verse)
-                            }
-                            .frame(height: rolodexCardHeight)
-                            .offset(y: stackOff + angledOff + (bottomStackOffset(for: verse.id, index: index) ?? 0) + angledOverlapOffset(for: verse.id, index: index, approachingVerseID: approachingProminenceVerseID, transitioningVerseID: transitioningIntoProminenceVerseID))
-                            .zIndex(cardZIndex(verseID: verse.id, index: index))
-                            .id(verse.id)
-                            .background(
-                                GeometryReader { geo in
-                                    Color.clear
-                                        .preference(key: CardFramePreferenceKey.self, value: [verse.id: geo.frame(in: .named("scroll")).minY])
-                                }
-                            )
-
-                            if index < filteredVerses.count - 1 {
-                                Spacer()
-                                    .frame(height: spacingAfterCard(at: index))
-                            }
-                        }
+    private var rolodexScrollContent: some View {
+        VStack(spacing: 0) {
+            if filteredVerses.isEmpty {
+                emptyVerseCard
+            } else {
+                ForEach(Array(filteredVerses.enumerated()), id: \.element.id) { index, verse in
+                    rolodexCardRow(index: index, verse: verse)
+                    if index < filteredVerses.count - 1 {
+                        Spacer()
+                            .frame(height: spacingAfterCard(at: index))
                     }
                 }
-                .padding(.top, prominenceLine)
-                .padding(.horizontal, VerseCardLayout.horizontalPadding)
-                .padding(.bottom, scrollBottomPaddingAboveFooter + CGFloat(max(16, filteredVerses.count * 48)))
-                .onPreferenceChange(CardFramePreferenceKey.self) { newValue in
-                    // Only update when positions changed meaningfully (tolerance avoids feedback loop and jitter).
-                    if cardMinYsChanged(newValue, cardMinYs) {
-                        cardMinYs = newValue
-                    }
+            }
+        }
+        .padding(.top, prominenceLine)
+        .padding(.horizontal, VerseCardLayout.horizontalPadding)
+        .padding(.bottom, scrollBottomPaddingAboveFooter + CGFloat(max(16, filteredVerses.count * 48)))
+    }
+
+    private var emptyVerseCard: some View {
+        Button {
+            showAddVerse = true
+        } label: {
+            VStack(spacing: 8) {
+                Text("No verses")
+                    .font(.headline)
+                Text("Tap + to add verses")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding()
+        }
+        .buttonStyle(.plain)
+        .rolodexCardStyle()
+        .frame(height: rolodexCardHeight)
+    }
+
+    @ViewBuilder
+    private func rolodexCardRow(index: Int, verse: Verse) -> some View {
+        let factor = prominenceFactor(for: verse.id, index: index)
+        let tilt = tiltDegrees(for: verse.id, index: index)
+        let scale = cardScale(for: verse.id, index: index)
+        let stackOff = stackOffset(for: verse.id) ?? 0
+        let angledOff = angledVisualOffset(for: verse.id, approachingVerseID: approachingProminenceVerseID, transitioningVerseID: transitioningIntoProminenceVerseID)
+        let isProminent = factor > 0.5
+        RolodexCardView(
+            verse: verse,
+            showFullVerse: true,
+            tiltDegrees: tilt,
+            isProminent: isProminent
+        ) {
+            path.append(verse)
+        }
+        .frame(height: rolodexCardHeight)
+        .scaleEffect(scale)
+        .offset(y: stackOff + angledOff + (bottomStackOffset(for: verse.id, index: index) ?? 0) + angledOverlapOffset(for: verse.id, index: index, approachingVerseID: approachingProminenceVerseID, transitioningVerseID: transitioningIntoProminenceVerseID))
+        .zIndex(cardZIndex(verseID: verse.id, index: index))
+        .id(verse.id)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .preference(key: CardFramePreferenceKey.self, value: [verse.id: geo.frame(in: .named("scroll")).minY])
+            }
+        )
+    }
+
+    private var mainContentStack: some View {
+        VStack(spacing: 0) {
+            TextField("Search this Pack:", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+                .background(Color(.secondarySystemBackground))
+
+            ScrollView(.vertical, showsIndicators: true) {
+                rolodexScrollContent
+            }
+            .onPreferenceChange(CardFramePreferenceKey.self) { newValue in
+                if cardMinYsChanged(newValue, cardMinYs) {
+                    cardMinYs = newValue
                 }
             }
             .overlay(
                 GeometryReader { geo in
-                    Color.clear.preference(key: ScrollViewHeightKey.self, value: geo.size.height)
+                    Color.clear
+                        .preference(key: ScrollViewHeightKey.self, value: geo.size.height)
+                        .preference(key: ScrollViewWidthKey.self, value: geo.size.width)
                 }
                 .allowsHitTesting(false)
             )
             .onPreferenceChange(ScrollViewHeightKey.self) { if $0 > 0 { scrollViewHeight = $0 } }
+            .onPreferenceChange(ScrollViewWidthKey.self) { w in
+                if w > 0 { scrollContentWidth = max(0, w - 2 * VerseCardLayout.horizontalPadding) }
+            }
             .coordinateSpace(name: "scroll")
             .scrollPosition(id: $scrollAnchorID, anchor: .top)
             .onAppear {
@@ -507,9 +559,85 @@ struct PackDetailView: View {
                     scrollAnchorID = first.id
                 }
             }
+        }
+    }
 
-                // Front footer: inset 6pt from back; content at top, rectangles extend to screen bottom
-                ZStack {
+    var body: some View {
+        mainZStack
+            .onPreferenceChange(FooterHeightKey.self) { footerHeight = $0 }
+            .background(safeAreaBackground)
+            .onPreferenceChange(SafeAreaBottomKey.self) { bottomSafeArea = $0 }
+            .ignoresSafeArea(edges: .bottom)
+            .navigationTitle("My Packs")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { bodyToolbarContent }
+            .sheet(isPresented: $showAddVerse) {
+                AddVerseView(pack: pack, isPresented: $showAddVerse)
+            }
+            .confirmationDialog("Delete Pack", isPresented: $showDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    modelContext.delete(pack)
+                    try? modelContext.save()
+                    path = NavigationPath()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Are you sure you want to delete \"\(pack.title)\"? All verses will be removed.")
+            }
+            .fullScreenCover(isPresented: $showMemorization) {
+                FlashcardView(pack: pack, verses: pack.verses.sorted { $0.order < $1.order })
+            }
+            .rotation3DEffect(.degrees(-90 + 90 * flipProgress), axis: (x: 0, y: 1, z: 0))
+            .scaleEffect(0.95 + 0.05 * flipProgress)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.4)) {
+                    flipProgress = 1
+                }
+            }
+    }
+
+    private var mainZStack: some View {
+        ZStack(alignment: .bottom) {
+            backPocketLayer
+            mainContentStack
+            frontFooterView
+        }
+    }
+
+    private var safeAreaBackground: some View {
+        GeometryReader { geo in
+            Color.clear.preference(key: SafeAreaBottomKey.self, value: geo.safeAreaInsets.bottom)
+        }
+        .allowsHitTesting(false)
+    }
+
+    @ToolbarContentBuilder
+    private var bodyToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                showAddVerse = true
+            } label: {
+                Image(systemName: "doc.badge.plus")
+            }
+        }
+        ToolbarItem(placement: .bottomBar) {
+            Button {
+                showAddVerse = true
+            } label: {
+                Label("Add Verse", systemImage: "plus")
+            }
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Button(role: .destructive) {
+                showDeleteConfirmation = true
+            } label: {
+                Image(systemName: "trash")
+            }
+        }
+    }
+
+    private var frontFooterView: some View {
+        ZStack {
                     VStack(spacing: 0) {
                         // One row: close + title/subtitle on left, Review button on right
                         HStack(alignment: .center, spacing: 14) {
@@ -569,58 +697,6 @@ struct PackDetailView: View {
                     }
                     .allowsHitTesting(false)
                 )
-            }
-        }
-        .onPreferenceChange(FooterHeightKey.self) { footerHeight = $0 }
-        .background(
-            GeometryReader { geo in
-                Color.clear.preference(key: SafeAreaBottomKey.self, value: geo.safeAreaInsets.bottom)
-            }
-            .allowsHitTesting(false)
-        )
-        .onPreferenceChange(SafeAreaBottomKey.self) { bottomSafeArea = $0 }
-        .ignoresSafeArea(edges: .bottom)
-        .navigationTitle("My Packs")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showAddVerse = true
-                } label: {
-                    Image(systemName: "doc.badge.plus")
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Button(role: .destructive) {
-                    showDeleteConfirmation = true
-                } label: {
-                    Image(systemName: "trash")
-                }
-            }
-        }
-        .sheet(isPresented: $showAddVerse) {
-            AddVerseView(pack: pack, isPresented: $showAddVerse)
-        }
-        .confirmationDialog("Delete Pack", isPresented: $showDeleteConfirmation) {
-            Button("Delete", role: .destructive) {
-                modelContext.delete(pack)
-                try? modelContext.save()
-                path = NavigationPath()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Are you sure you want to delete \"\(pack.title)\"? All verses will be removed.")
-        }
-        .fullScreenCover(isPresented: $showMemorization) {
-            FlashcardView(pack: pack, verses: pack.verses.sorted { $0.order < $1.order })
-        }
-        .rotation3DEffect(.degrees(-90 + 90 * flipProgress), axis: (x: 0, y: 1, z: 0))
-        .scaleEffect(0.95 + 0.05 * flipProgress)
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.4)) {
-                flipProgress = 1
-            }
-        }
     }
 }
 
@@ -653,9 +729,9 @@ struct RolodexCardView: View {
                     Text(verse.text)
                         .font(.body)
                         .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
+                        .multilineTextAlignment(.center)
                         .lineLimit(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 Spacer(minLength: 0)
             }
@@ -664,7 +740,7 @@ struct RolodexCardView: View {
         }
         .buttonStyle(.plain)
         .rolodexCardStyle(prominent: isProminent)
-        .rotation3DEffect(.degrees(tiltDegrees), axis: (x: 1, y: 0, z: 0))
+        .rotation3DEffect(.degrees(tiltDegrees), axis: (x: 1, y: 0, z: 0), anchor: .center, perspective: 0.4)
     }
 }
 
@@ -691,9 +767,9 @@ struct ProminentVerseCardView: View {
                 Text(verse.text)
                     .font(.body)
                     .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
+                    .multilineTextAlignment(.center)
                     .lineLimit(6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -749,13 +825,14 @@ struct CircularProgressView: View {
 extension View {
     fileprivate func rolodexCardStyle(prominent: Bool = false) -> some View {
         let cornerRadius: CGFloat = prominent ? 12 : 10
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
         return self
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+            .clipShape(shape)
             .background(
-                RoundedRectangle(cornerRadius: cornerRadius)
+                shape
                     .fill(Color(.systemBackground))
                     .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius)
+                        shape
                             .strokeBorder(Color(.separator), lineWidth: 1)
                     )
             )
