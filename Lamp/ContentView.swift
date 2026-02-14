@@ -108,8 +108,9 @@ private struct NeuTabBar: View {
             let h = geo.size.height
             let tabCount = CGFloat(Tab.allCases.count)
             let tabWidth = w / tabCount
-            let selectorW = tabWidth - 10
-            let selectorH = h - 10
+            let inset: CGFloat = 8       // uniform gap between track and pill
+            let selectorW = tabWidth - inset * 2
+            let selectorH = h - inset * 2
 
             // Rest position = center of the selected tab
             let restX = tabWidth * CGFloat(selected.rawValue) + tabWidth / 2
@@ -120,11 +121,11 @@ private struct NeuTabBar: View {
                 // 1. Track with physical border
                 trackBody
 
-                // 2. Neumorphic raised pill selector
+                // 2. Neumorphic pill – raised from the track floor
                 Capsule()
                     .fill(neuBg)
-                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 5, y: 5)
-                    .shadow(color: Color.white.opacity(0.7), radius: 8, x: -3, y: -3)
+                    .shadow(color: Color.black.opacity(0.18), radius: 5, x: 4, y: 4)
+                    .shadow(color: Color.white.opacity(0.6), radius: 5, x: -3, y: -3)
                     .frame(width: selectorW, height: selectorH)
                     .position(x: pillX, y: h / 2)
 
@@ -218,65 +219,53 @@ private struct NeuTabBar: View {
                     )
             }
         }
-        .frame(height: 68)
+        .frame(height: 84)
     }
 
     // MARK: Track Background
 
-    /// Inset track with pronounced physical raised border rim + inner shadows.
+    /// Neumorphic track – inset into the page surface.
     private var trackBody: some View {
         ZStack {
-            // Base fill
+            // Base fill – same as background
             Capsule().fill(neuBg)
 
-            // Outer raised border rim (strong gradient stroke)
+            // Inner shadow – dark along full top edge
             Capsule()
-                .strokeBorder(
-                    LinearGradient(
-                        gradient: Gradient(colors: [
-                            Color.white.opacity(0.95),
-                            Color.white.opacity(0.4),
-                            Color.black.opacity(0.18)
-                        ]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 6
-                )
+                .stroke(Color.gray.opacity(0.7), lineWidth: 7)
+                .blur(radius: 5)
+                .offset(y: 4)
+                .mask(Capsule().fill(
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .center)
+                ))
 
-            // Inner shadow -- dark (bottom-right depression)
+            // Inner shadow – dark along full left edge
             Capsule()
-                .stroke(Color.gray.opacity(0.5), lineWidth: 5)
-                .blur(radius: 4)
-                .offset(x: 3, y: 3)
-                .mask(
-                    Capsule().fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.black, Color.clear]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                )
+                .stroke(Color.gray.opacity(0.7), lineWidth: 7)
+                .blur(radius: 5)
+                .offset(x: 4)
+                .mask(Capsule().fill(
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .center)
+                ))
 
-            // Inner shadow -- light (top-left highlight)
+            // Inner shadow – light along full bottom edge
             Capsule()
-                .stroke(Color.white, lineWidth: 6)
-                .blur(radius: 4)
-                .offset(x: -3, y: -3)
-                .mask(
-                    Capsule().fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.clear, Color.black]),
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                )
+                .stroke(Color.white.opacity(0.9), lineWidth: 7)
+                .blur(radius: 5)
+                .offset(y: -3)
+                .mask(Capsule().fill(
+                    LinearGradient(colors: [.black, .clear], startPoint: .bottom, endPoint: .center)
+                ))
+
+            // Inner shadow – light along full right edge
+            Capsule()
+                .stroke(Color.white.opacity(0.9), lineWidth: 7)
+                .blur(radius: 5)
+                .offset(x: -3)
+                .mask(Capsule().fill(
+                    LinearGradient(colors: [.black, .clear], startPoint: .trailing, endPoint: .center)
+                ))
         }
-        // Outer shadows
-        .shadow(color: .black.opacity(0.2), radius: 10, x: 7, y: 7)
-        .shadow(color: .white.opacity(0.7), radius: 10, x: -4, y: -4)
     }
 }
 
