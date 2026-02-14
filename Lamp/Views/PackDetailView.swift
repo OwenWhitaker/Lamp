@@ -262,11 +262,6 @@ struct PackDetailView: View {
 
                 Spacer()
 
-                // Delete button
-                NeuCircleButton(icon: "trash", size: 38) {
-                    showDeleteConfirmation = true
-                }
-
                 // Review button
                 Button {
                     showMemorization = true
@@ -291,7 +286,7 @@ struct PackDetailView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 4)
-            .padding(.bottom, 100) // clear the tab bar
+            .padding(.bottom, 120) // clear the tab bar
             .background(Color.neuBg)
         }
         .ignoresSafeArea(edges: .bottom)
