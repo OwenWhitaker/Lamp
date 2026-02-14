@@ -13,6 +13,146 @@ private extension LinearGradient {
     }
 }
 
+private struct SwipeableVerseRow: View {
+    let verse: Verse
+    @Binding var openSwipeVerseId: UUID?
+    let onTap: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    @State private var offsetX: CGFloat = 0
+    @GestureState private var dragX: CGFloat = 0
+
+    private let actionSize: CGFloat = 48
+    private let actionGap: CGFloat = 10
+    private var maxReveal: CGFloat { actionSize * 2 + actionGap + 24 }
+    private var effectiveOffset: CGFloat { rubberBand(offsetX + dragX) }
+    private var settleSpring: Animation {
+        .interpolatingSpring(stiffness: 260, damping: 22)
+    }
+
+    var body: some View {
+        ZStack {
+            actionRow
+            NeuVerseCard(verse: verse, action: onTap)
+                .offset(x: effectiveOffset)
+                .highPriorityGesture(dragGesture)
+        }
+        .onChange(of: openSwipeVerseId) {
+            if openSwipeVerseId != verse.id, offsetX != 0 {
+                withAnimation(settleSpring) {
+                    offsetX = 0
+                }
+            }
+        }
+    }
+
+    private var actionRow: some View {
+        HStack {
+            HStack(spacing: actionGap) {
+                Button(action: onDelete) {
+                    NeuSwipeActionCircle(icon: "trash", size: actionSize, iconColor: .red)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onEdit) {
+                    NeuSwipeActionCircle(icon: "square.and.pencil", size: actionSize)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 10, coordinateSpace: .local)
+            .updating($dragX) { value, state, _ in
+                state = value.translation.width
+            }
+            .onChanged { _ in
+                if openSwipeVerseId != verse.id {
+                    openSwipeVerseId = verse.id
+                }
+            }
+            .onEnded { value in
+                let raw = offsetX + value.translation.width
+                let current = clamped(raw)
+
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    offsetX = raw
+                }
+
+                let shouldOpen = current > maxReveal * 0.35
+
+                if shouldOpen {
+                    withAnimation(settleSpring) {
+                        offsetX = maxReveal
+                    }
+                    openSwipeVerseId = verse.id
+                } else {
+                    withAnimation(settleSpring) {
+                        offsetX = 0
+                    }
+                    if openSwipeVerseId == verse.id {
+                        openSwipeVerseId = nil
+                    }
+                }
+            }
+    }
+
+    private func clamped(_ value: CGFloat) -> CGFloat {
+        min(max(value, 0), maxReveal)
+    }
+
+    private func rubberBand(_ value: CGFloat) -> CGFloat {
+        if value < 0 {
+            let d = abs(value)
+            return -18 * log1p(d / 18)
+        }
+        if value > maxReveal {
+            let over = value - maxReveal
+            return maxReveal + 18 * log1p(over / 18)
+        }
+        return value
+    }
+}
+
+struct EditVerseView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Binding var isPresented: Bool
+    @Bindable var verse: Verse
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Reference", text: $verse.reference, prompt: Text("e.g. John 3:16"))
+                TextField("Verse text", text: $verse.text, axis: .vertical)
+                    .lineLimit(5...20)
+            }
+            .navigationTitle("Edit Verse")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        try? modelContext.save()
+                        isPresented = false
+                    }
+                    .disabled(verse.reference.trimmingCharacters(in: .whitespaces).isEmpty || verse.text.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+    }
+}
+
 /// Raised surface -- extruded from the background with flat fill.
 private struct NeuRaised<S: Shape>: View {
     var shape: S
@@ -67,6 +207,10 @@ struct PackDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var showMemorization = false
     @State private var showAddVerse = false
+    @State private var showEditVerse = false
+    @State private var pendingVerseDelete: Verse?
+    @State private var pendingVerseEdit: Verse?
+    @State private var openSwipeVerseId: UUID?
 
     private var sortedVerses: [Verse] {
         pack.verses.sorted { $0.order < $1.order }
@@ -114,6 +258,11 @@ struct PackDetailView: View {
         .sheet(isPresented: $showAddVerse) {
             AddVerseView(pack: pack, isPresented: $showAddVerse)
         }
+        .sheet(isPresented: $showEditVerse) {
+            if let verse = pendingVerseEdit {
+                EditVerseView(isPresented: $showEditVerse, verse: verse)
+            }
+        }
         .confirmationDialog("Delete Pack", isPresented: $showDeleteConfirmation) {
             Button("Delete", role: .destructive) {
                 modelContext.delete(pack)
@@ -126,6 +275,20 @@ struct PackDetailView: View {
         }
         .fullScreenCover(isPresented: $showMemorization) {
             FlashcardView(pack: pack, verses: pack.verses.sorted { $0.order < $1.order })
+        }
+        .confirmationDialog("Delete Verse", isPresented: Binding(
+            get: { pendingVerseDelete != nil },
+            set: { if !$0 { pendingVerseDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                deletePendingVerse()
+            }
+            Button("Cancel", role: .cancel) {
+                pendingVerseDelete = nil
+            }
+        } message: {
+            let ref = pendingVerseDelete?.reference ?? "this verse"
+            Text("Are you sure you want to delete \"\(ref)\"?")
         }
     }
 
@@ -168,16 +331,32 @@ struct PackDetailView: View {
             } else {
                 LazyVStack(spacing: 16) {
                     ForEach(sortedVerses) { verse in
-                        NeuVerseCard(verse: verse) {
-                            path.append(verse)
-                        }
+                        SwipeableVerseRow(
+                            verse: verse,
+                            openSwipeVerseId: $openSwipeVerseId,
+                            onTap: { path.append(verse) },
+                            onEdit: {
+                                pendingVerseEdit = verse
+                                showEditVerse = true
+                            },
+                            onDelete: {
+                                pendingVerseDelete = verse
+                            }
+                        )
                     }
                 }
                 .padding(.horizontal, 20)
-                .padding(.top, 80) // clear the floating header
-                .padding(.bottom, 200) // clear the floating footer + tab bar
+                .padding(.top, 80)
+                .padding(.bottom, 200)
             }
         }
+    }
+
+    private func deletePendingVerse() {
+        guard let verse = pendingVerseDelete else { return }
+        modelContext.delete(verse)
+        try? modelContext.save()
+        pendingVerseDelete = nil
     }
 
     // MARK: Empty / No Results
@@ -314,6 +493,23 @@ private struct NeuCircleButton: View {
     }
 }
 
+private struct NeuSwipeActionCircle: View {
+    let icon: String
+    var size: CGFloat = 44
+    var iconColor: Color = Color.black.opacity(0.45)
+
+    var body: some View {
+        ZStack {
+            NeuRaised(shape: Circle(), radius: 6, distance: 5)
+                .frame(width: size, height: size)
+            Image(systemName: icon)
+                .font(.system(size: size * 0.36, weight: .semibold))
+                .foregroundStyle(iconColor)
+        }
+        .contentShape(Circle())
+    }
+}
+
 // MARK: - Neumorphic Verse Card
 
 private struct NeuVerseCard: View {
@@ -350,6 +546,7 @@ private struct NeuVerseCard: View {
             .background(
                 NeuRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous))
             )
+            .padding(.vertical, 8)
         }
         .buttonStyle(.plain)
     }
