@@ -91,6 +91,16 @@ struct ContentView: View {
 
 private struct NeuTabBar: View {
     @Binding var selected: Tab
+    @State private var dragX: CGFloat? = nil   // nil = use selected tab's rest position
+    @State private var isDragging = false
+    @State private var holdTriggered = false    // true once a held-tap fires
+    @State private var holdID = UUID()          // cancels stale hold timers
+    @State private var touchLocation: CGFloat = 0
+
+    // Threshold (pt) to distinguish a tap from a real drag
+    private let dragThreshold: CGFloat = 8
+    // How long a stationary press must be held before the pill slides over
+    private let holdDelay: TimeInterval = 0.2
 
     var body: some View {
         GeometryReader { geo in
@@ -100,48 +110,115 @@ private struct NeuTabBar: View {
             let tabWidth = w / tabCount
             let selectorW = tabWidth - 10
             let selectorH = h - 10
-            let selectorX = tabWidth * CGFloat(selected.rawValue) + tabWidth / 2
+
+            // Rest position = center of the selected tab
+            let restX = tabWidth * CGFloat(selected.rawValue) + tabWidth / 2
+            // During a real drag follow the finger; otherwise use the animated rest position
+            let pillX = dragX ?? restX
 
             ZStack {
-                // 1. Track with clean physical border
+                // 1. Track with physical border
                 trackBody
 
-                // 2. Sliding raised selector
+                // 2. Neumorphic raised pill selector
                 Capsule()
                     .fill(neuBg)
-                    .shadow(color: .black.opacity(0.18), radius: 5, x: 4, y: 4)
-                    .shadow(color: .white.opacity(0.7), radius: 5, x: -2, y: -2)
+                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 5, y: 5)
+                    .shadow(color: Color.white.opacity(0.7), radius: 8, x: -3, y: -3)
                     .frame(width: selectorW, height: selectorH)
-                    .position(x: selectorX, y: h / 2)
+                    .position(x: pillX, y: h / 2)
 
-                // 3. Tab items
+                // 3. Tab labels (hit-testing disabled; gesture layer handles touches)
                 HStack(spacing: 0) {
                     ForEach(Tab.allCases, id: \.self) { tab in
-                        Button {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.78)) {
-                                selected = tab
-                            }
-                        } label: {
-                            VStack(spacing: 3) {
-                                Image(systemName: tab.icon)
-                                    .font(.system(size: 17, weight: .medium))
-                                Text(tab.label)
-                                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                            }
-                            .foregroundStyle(
-                                selected == tab
-                                    ? Color.black.opacity(0.6)
-                                    : Color.black.opacity(0.28)
-                            )
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
+                        VStack(spacing: 3) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 17, weight: .medium))
+                            Text(tab.label)
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
                         }
-                        .buttonStyle(.plain)
+                        .foregroundStyle(
+                            selected == tab
+                                ? Color.black.opacity(0.6)
+                                : Color.black.opacity(0.28)
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
                     }
                 }
+                .allowsHitTesting(false)
+
+                // 4. Invisible gesture layer — taps animate, drags follow finger
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                let moved = abs(value.translation.width)
+                                touchLocation = value.location.x
+
+                                if moved > dragThreshold {
+                                    // Real drag — cancel any pending hold timer
+                                    holdID = UUID()
+                                    isDragging = true
+                                    let clampedX = min(max(value.location.x, tabWidth / 2), w - tabWidth / 2)
+                                    withAnimation(.interactiveSpring(response: 0.22, dampingFraction: 0.82)) {
+                                        dragX = clampedX
+                                    }
+                                    // Update selected tab in real-time
+                                    let index = min(max(Int(value.location.x / tabWidth), 0), Tab.allCases.count - 1)
+                                    let newTab = Tab.allCases[index]
+                                    if newTab != selected { selected = newTab }
+                                } else if !isDragging && !holdTriggered && value.translation == .zero {
+                                    // First touch frame — schedule a hold timer
+                                    let currentID = UUID()
+                                    holdID = currentID
+                                    let loc = value.location.x
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + holdDelay) {
+                                        // Only fire if the gesture hasn't moved or ended
+                                        guard holdID == currentID, !isDragging else { return }
+                                        holdTriggered = true
+                                        let index = min(max(Int(loc / tabWidth), 0), Tab.allCases.count - 1)
+                                        let newTab = Tab.allCases[index]
+                                        withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                                            selected = newTab
+                                            dragX = nil
+                                        }
+                                    }
+                                }
+                            }
+                            .onEnded { value in
+                                // Cancel any pending hold timer
+                                holdID = UUID()
+
+                                let moved = abs(value.translation.width)
+                                let index = min(max(Int(value.location.x / tabWidth), 0), Tab.allCases.count - 1)
+                                let finalTab = Tab.allCases[index]
+
+                                if holdTriggered {
+                                    // Hold already moved the pill — just clean up
+                                    holdTriggered = false
+                                    isDragging = false
+                                    dragX = nil
+                                } else if moved <= dragThreshold {
+                                    // Quick tap — animate pill to tapped tab
+                                    withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                                        selected = finalTab
+                                        dragX = nil
+                                    }
+                                } else {
+                                    // Drag release — spring-settle to nearest tab center
+                                    isDragging = false
+                                    withAnimation(.spring(response: 0.42, dampingFraction: 0.75)) {
+                                        selected = finalTab
+                                        dragX = nil
+                                    }
+                                }
+                            }
+                    )
             }
         }
-        .frame(height: 56)
+        .frame(height: 68)
     }
 
     // MARK: Track Background

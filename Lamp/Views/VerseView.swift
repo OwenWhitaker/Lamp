@@ -61,6 +61,7 @@ struct VerseView: View {
         }
         .navigationTitle(verse.pack?.title ?? verse.reference)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

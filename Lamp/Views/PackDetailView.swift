@@ -1,125 +1,75 @@
 import SwiftUI
 import SwiftData
-#if canImport(UIKit)
-import UIKit
-#endif
 
-private enum PackFooterLayout {
-    static let backLayerFill = Color(red: 0.55, green: 0.42, blue: 0.30)
-    static let frontLayerFill = Color(red: 0.62, green: 0.48, blue: 0.36)
-    static let circleButtonFill = Color(red: 0.72, green: 0.58, blue: 0.44)
-    static let reviewButtonFill = Color(red: 0.35, green: 0.26, blue: 0.18)
-    static let iconButtonSize: CGFloat = 44
-    static let reviewCornerRadius: CGFloat = 14
-    /// Back layer height: footer + enough to peek above front and slightly behind bottom cards (pocket).
-    static let pocketBackHeight: CGFloat = 250
-    /// Inset of the front footer from the back on all edges (6pt gap between front and back).
-    static let frontInset: CGFloat = 6
-    /// How much the back layer sticks above the front (pocket lip).
-    static let backPeekAboveFront: CGFloat = 12
-    /// Minimum bottom spacer so content stays above tab bar when safe area isn't reported (e.g. with ignoresSafeArea).
-    static let minBottomSpacer: CGFloat = 84
-    /// Fallback display corner radius when device value isn't available (e.g. Simulator, or if not using device corner API).
-    static let screenCornerRadius: CGFloat = 59
+// MARK: - Neumorphism Design System
+
+private extension Color {
+    static let neuBg = Color(red: 225 / 255, green: 225 / 255, blue: 235 / 255)
 }
 
-/// Reads the device display corner radius when available so footer corners can be concentric with the screen.
-/// Uses a UIScreen from the current window scene (avoids deprecated UIScreen.main). Falls back to `PackFooterLayout.screenCornerRadius` if unavailable. Uses private `_displayCornerRadius` key—Apple may reject; remove that call if needed.
-private enum DisplayCornerRadius {
-    static func read() -> CGFloat {
-        #if os(iOS)
-        let screen = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?
-            .screen
-        if let screen,
-           let value = screen.value(forKey: "_displayCornerRadius") as? CGFloat,
-           value > 0 {
-            return value
-        }
-        #endif
-        return PackFooterLayout.screenCornerRadius
+private extension LinearGradient {
+    init(_ colors: Color...) {
+        self.init(gradient: Gradient(colors: colors), startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 
-/// Back layer (pocket): sharp top; bottom corners concentric with screen.
-private func packFooterShape(cornerRadius: CGFloat = PackFooterLayout.screenCornerRadius) -> UnevenRoundedRectangle {
-    UnevenRoundedRectangle(
-        cornerRadii: RectangleCornerRadii(topLeading: 0, bottomLeading: cornerRadius, bottomTrailing: cornerRadius, topTrailing: 0)
-    )
-}
-/// Front layer (top rectangle): sharp top; bottom corners concentric with screen (radius = screen − inset).
-private func packFrontShape(cornerRadius: CGFloat = PackFooterLayout.screenCornerRadius - PackFooterLayout.frontInset) -> UnevenRoundedRectangle {
-    UnevenRoundedRectangle(
-        cornerRadii: RectangleCornerRadii(topLeading: 0, bottomLeading: cornerRadius, bottomTrailing: cornerRadius, topTrailing: 0)
-    )
+/// Raised surface -- extruded from the background with flat fill.
+private struct NeuRaised<S: Shape>: View {
+    var shape: S
+    var radius: CGFloat = 10
+    var distance: CGFloat = 10
+
+    var body: some View {
+        shape
+            .fill(Color.neuBg)
+            .shadow(color: Color.black.opacity(0.2), radius: radius, x: distance, y: distance)
+            .shadow(color: Color.white.opacity(0.7), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
+    }
 }
 
-/// Shared card dimensions for verse cards. Used by PackDetailView (rolodex) and FlashcardView so one edit updates both.
+/// Inset surface -- pressed into the background (blur + gradient-mask inner shadow).
+private struct NeuInset<S: Shape>: View {
+    var shape: S
+
+    var body: some View {
+        ZStack {
+            shape.fill(Color.neuBg)
+            shape
+                .stroke(Color.gray.opacity(0.5), lineWidth: 4)
+                .blur(radius: 4)
+                .offset(x: 2, y: 2)
+                .mask(shape.fill(LinearGradient(Color.black, Color.clear)))
+            shape
+                .stroke(Color.white, lineWidth: 6)
+                .blur(radius: 4)
+                .offset(x: -2, y: -2)
+                .mask(shape.fill(LinearGradient(Color.clear, Color.black)))
+        }
+    }
+}
+
+// MARK: - Shared Layout
+
+/// Shared card dimensions for verse cards. Used by PackDetailView and FlashcardView.
 enum VerseCardLayout {
     static let cardHeight: CGFloat = 160
     static let horizontalPadding: CGFloat = 12
 }
 
-/// Collects each card's minY in the scroll coordinate space for live tilt.
-private struct CardFramePreferenceKey: PreferenceKey {
-    static var defaultValue: [UUID: CGFloat] { [:] }
-    static func reduce(value: inout [UUID: CGFloat], nextValue: () -> [UUID: CGFloat]) {
-        value.merge(nextValue()) { _, n in n }
-    }
-}
-
-/// Reports the scroll view’s visible height so the bottom stack can be placed with only 6pt of the bottommost card visible.
-private struct SafeAreaBottomKey: PreferenceKey {
-    static var defaultValue: CGFloat { 0 }
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-private struct ScrollViewHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat { 0 }
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-private struct ScrollViewWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat { 0 }
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-/// Footer height so the back layer can be sized to stick above by backPeekAboveFront only.
-private struct FooterHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat { 0 }
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-/// Returns true if any position changed by more than `tolerance` (or keys differ). Use a small tolerance so scroll-driven positions update smoothly without snapping.
-private func cardMinYsChanged(_ newValue: [UUID: CGFloat], _ old: [UUID: CGFloat], tolerance: CGFloat = 0.1) -> Bool {
-    guard newValue.count == old.count else { return true }
-    for (id, newY) in newValue {
-        guard let oldY = old[id] else { return true }
-        if abs(newY - oldY) > tolerance { return true }
-    }
-    return false
-}
+// MARK: - Pack Detail View
 
 struct PackDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Bindable var pack: Pack
     @Binding var path: NavigationPath
-    @State private var searchText = ""
+
     @State private var showDeleteConfirmation = false
     @State private var showMemorization = false
     @State private var showAddVerse = false
-    @State private var flipProgress: Double = 0
-    @State private var scrollContentWidth: CGFloat = 0
 
-    private var filteredVerses: [Verse] {
-        let list = pack.verses.sorted { $0.order < $1.order }
-        guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return list }
-        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
-        return list.filter {
-            $0.reference.lowercased().contains(q) || $0.text.lowercased().contains(q)
-        }
+    private var sortedVerses: [Verse] {
+        pack.verses.sorted { $0.order < $1.order }
     }
 
     private var averageMemoryHealth: Double {
@@ -128,685 +78,327 @@ struct PackDetailView: View {
         return withHealth.reduce(0, +) / Double(withHealth.count)
     }
 
-    /// Device display corner radius so footer bottom corners stay concentric with the screen.
-    private var displayCornerRadius: CGFloat { DisplayCornerRadius.read() }
-
-    /// 3D tilt: top edge recedes into screen, bottom edge toward viewer (rotation around X axis).
-    private let rolodexTilt: Double = -12
-
-    /// Height for all cards: 2:3 aspect ratio (height:width) from content width; fallback to VerseCardLayout when width not yet known. Clamped to avoid invalid frame dimensions.
-    private var rolodexCardHeight: CGFloat {
-        let h = scrollContentWidth > 0 ? scrollContentWidth * 2 / 3 : VerseCardLayout.cardHeight
-        return max(44, h)
-    }
-
-    /// Spacer between cards in the rolodex (angled cards use normal spacing; no condensed overlap).
-    private let rolodexStackOverlap: CGFloat = 12
-
-    /// Below this distance from prominence we start “speeding up” the approaching card so it spaces out (equal spacing until threshold).
-    private let angledSpreadThreshold: CGFloat = 140
-    /// Gap the approaching card opens so it doesn’t cover the prominent card until scrolled past.
-    private let angledGapAtProminence: CGFloat = 44
-
-    /// Fixed Y of the prominence slot.
-    private let prominenceLine: CGFloat = 16
-    /// Y below which cards start getting tilt (angled). Same distance as bottom-stack→angled for equivalent transition.
-    private var angledStartY: CGFloat { prominenceLine + topStackToAngledTransitionHeight }
-    /// Y where stack cards rest, stacked directly on top of one another (4, 10, 16, …).
-    private let stackBaseY: CGFloat = 4
-    /// Vertical offset per card in the stack (pixels).
-    private let stackPixelOffset: CGFloat = 6
-    /// Y where a card first appears when entering the stack (offset up from prominence line), then eases down to stackBaseY + idx*offset.
-    private let stackEntryY: CGFloat = 12
-    /// Distance over which a card eases from entry (at stackEntryY) into its final stack position (fluid motion).
-    private let stackTransitionHeight: CGFloat = 100
-    /// Max number of cards visible in the stack; the 4th and beyond are hidden behind the 3rd.
-    private let maxVisibleStackCount: Int = 3
-
-    /// Height of the visible sliver of the bottommost card above the pack footer (orange border).
-    private let bottomStackVisibleSliver: CGFloat = 6
-    /// Fallback when scroll height isn’t available yet; use a typical viewport height so the stack starts low.
-    private let scrollViewHeightFallback: CGFloat = 580
-    /// Y below which cards sit in the "bottom stack". Positioned so only the top `bottomStackVisibleSliver` of the bottommost card shows above the footer. Clamped to avoid invalid layout.
-    private var bottomStackThresholdY: CGFloat {
-        let justBelow = prominenceLine + rolodexCardHeight
-        let base = justBelow + 1 * (rolodexCardHeight + rolodexStackOverlap)
-        let h = scrollViewHeight > 0 ? scrollViewHeight : scrollViewHeightFallback
-        let n = max(0, filteredVerses.count - prominentIndex - 2)
-        guard n > 0 else { return base }
-        let y = h - bottomStackVisibleSliver - CGFloat(n - 1) * bottomStackPixelOffset
-        return max(base, y)
-    }
-    /// Extra bottom padding so the bottom stack stays visible above the pack footer when scrolled.
-    private let scrollBottomPaddingAboveFooter: CGFloat = 130
-    /// Vertical offset per card in the bottom stack (same as top). Front card stays at fixed Y; positions are index-based so cards don’t shift as others leave.
-    private let bottomStackPixelOffset: CGFloat = 6
-    /// Distance over which a card tapers between flat and angled at top or bottom.
-    private let topStackToAngledTransitionHeight: CGFloat = 120
-    /// Distance over which a card tapers from bottom-stack position into angled (scroll-driven).
-    private let bottomStackToAngledTransitionHeight: CGFloat = 40
-
-    /// ID of the verse at the scroll anchor (top); drives which card is prominent.
-    @State private var scrollAnchorID: UUID?
-
-    /// Each card's minY in the scroll coordinate space (live-updated as user scrolls).
-    @State private var cardMinYs: [UUID: CGFloat] = [:]
-    /// Scroll view’s visible height (from GeometryReader) so we can place the bottom stack with only 6pt of the bottommost card visible.
-    @State private var scrollViewHeight: CGFloat = 0
-    @State private var bottomSafeArea: CGFloat = 0
-    @State private var footerHeight: CGFloat = 0
-
-    /// Index of the verse currently in prominence (at the top of the scroll).
-    private var prominentIndex: Int {
-        guard let id = scrollAnchorID else { return 0 }
-        return filteredVerses.firstIndex(where: { $0.id == id }) ?? 0
-    }
-
-    /// Fixed spacing so layout never depends on geometry (avoids CPU spike from re-layout).
-    private func spacingAfterCard(at index: Int) -> CGFloat {
-        rolodexStackOverlap
-    }
-
-    /// No condensed overlap: angled cards use their natural layout position (spacing from rolodexStackOverlap).
-    private func angledOverlapOffset(for verseID: UUID, index: Int, approachingVerseID: UUID?, transitioningVerseID: UUID?) -> CGFloat {
-        0
-    }
-
-    /// The single verse that is “approaching prominence” (smallest minY >= justBelow). Used for visual speed-up/gap.
-    private var approachingProminenceVerseID: UUID? {
-        let justBelow = prominenceLine + rolodexCardHeight
-        func effectiveMinY(_ v: Verse) -> CGFloat {
-            if let y = cardMinYs[v.id] { return y }
-            let i = filteredVerses.firstIndex(where: { $0.id == v.id }) ?? 0
-            if i <= prominentIndex { return 0 }
-            return prominenceLine + CGFloat(i - prominentIndex) * rolodexCardHeight
-        }
-        return filteredVerses
-            .filter { effectiveMinY($0) >= justBelow }
-            .min(by: { effectiveMinY($0) < effectiveMinY($1) })?
-            .id
-    }
-
-    /// Verse in the prominence band with largest minY (card that just moved from angled into prominence). We taper its offset to 0 so no teleport.
-    private var transitioningIntoProminenceVerseID: UUID? {
-        let justBelow = prominenceLine + rolodexCardHeight
-        return filteredVerses
-            .filter { let y = cardMinYs[$0.id]; return y != nil && y! >= prominenceLine && y! <= justBelow }
-            .max(by: { (cardMinYs[$0.id] ?? -1) < (cardMinYs[$1.id] ?? -1) })?
-            .id
-    }
-
-    /// Card that should be shown as prominent: scroll anchor when set, else the card optically at the top (minY within threshold).
-    /// Max distance below prominence line for a card to count as "optically in place" on the top stack.
-    private let prominentAtTopThreshold: CGFloat = 44
-    private var effectiveProminentVerseID: UUID? {
-        if let id = scrollAnchorID { return id }
-        let atTopMax = prominenceLine + prominentAtTopThreshold
-        return filteredVerses
-            .filter { let y = cardMinYs[$0.id]; return y != nil && y! >= prominenceLine && y! <= atTopMax }
-            .min(by: { (cardMinYs[$0.id] ?? .infinity) < (cardMinYs[$1.id] ?? .infinity) })?
-            .id
-    }
-
-    /// Visual-only offset: one continuous motion from angled into prominence. Anchor gets 0 so fast scrolls don’t leave it offset.
-    private func angledVisualOffset(for verseID: UUID, approachingVerseID: UUID?, transitioningVerseID: UUID?) -> CGFloat {
-        if verseID == effectiveProminentVerseID { return 0 }
-        guard let minY = cardMinYs[verseID] else { return 0 }
-        let justBelow = prominenceLine + rolodexCardHeight
-        let bandHeight = justBelow - prominenceLine
-
-        if minY > justBelow, verseID == approachingVerseID {
-            let distBelow = min(minY - justBelow, angledSpreadThreshold)
-            if distBelow <= 0 { return 0 }
-            let t = distBelow / angledSpreadThreshold
-            let tEased = t * t
-            return angledGapAtProminence * (1 - tEased)
-        }
-
-        if minY >= prominenceLine, minY <= justBelow, verseID == transitioningVerseID {
-            return angledGapAtProminence * (minY - prominenceLine) / bandHeight
-        }
-
-        return 0
-    }
-
-    /// 0 = far from prominence line, 1 = at prominent position. Anchor is always prominent so fast scrolls don’t leave it stuck angled.
-    private func prominenceFactor(for verseID: UUID, index: Int) -> Double {
-        if verseID == effectiveProminentVerseID { return 1 }
-        if let minY = cardMinYs[verseID] {
-            let distance = abs(minY - prominenceLine)
-            let fadeDistance: CGFloat = 140
-            return 1 - min(1, Double(distance / fadeDistance))
-        }
-        return index == prominentIndex ? 1 : 0
-    }
-
-    /// Smoothstep for zero derivative at 0 and 1 (no snap).
-    private func smoothstep(_ t: Double) -> Double {
-        let c = min(1, max(0, t))
-        return c * c * (3 - 2 * c)
-    }
-
-    /// Tilt: 0 at prominent and bottom stack. Smooth ramp only from angled into prominent/top stack (prominenceLine … angledStartY).
-    private func tiltDegrees(for verseID: UUID, index: Int) -> Double {
-        if verseID == effectiveProminentVerseID { return 0 }
-        guard let minY = cardMinYs[verseID] else {
-            return index == prominentIndex ? 0 : rolodexTilt
-        }
-        if minY <= prominenceLine { return 0 }
-        if minY > bottomStackThresholdY { return 0 }
-        // Smooth the angled → prominent/top stack transition with ease-in curve
-        if minY < angledStartY {
-            let rampHeight = angledStartY - prominenceLine
-            let t = Double((minY - prominenceLine) / rampHeight)
-            // Ease-in: card stays flat longer near prominence, then tilts more quickly further away
-            let eased = t * t * (3 - 2 * t) // smoothstep
-            return rolodexTilt * eased
-        }
-        let band = bottomStackThresholdY - angledStartY
-        guard band > 0 else { return rolodexTilt }
-        let t = Double((minY - angledStartY) / band)
-        return rolodexTilt * (1 - min(1, max(0, t)))
-    }
-
-    /// Scale: 1.0 at prominence, slightly smaller when angled or in the stack. Gives visual depth to the transition.
-    private let angledScale: CGFloat = 0.96
-    private let stackScale: CGFloat = 0.97
-    private func cardScale(for verseID: UUID, index: Int) -> CGFloat {
-        if verseID == effectiveProminentVerseID { return 1.0 }
-        guard let minY = cardMinYs[verseID] else {
-            return index == prominentIndex ? 1.0 : angledScale
-        }
-        // In the top stack (above prominence)
-        if minY <= prominenceLine { return stackScale }
-        // In the bottom stack
-        if minY > bottomStackThresholdY { return stackScale }
-        // Transition zone: flat → angled
-        if minY < angledStartY {
-            let t = CGFloat((minY - prominenceLine) / (angledStartY - prominenceLine))
-            let eased = CGFloat(smoothstep(Double(t)))
-            return 1.0 - eased * (1.0 - angledScale)
-        }
-        // Fully angled area
-        return angledScale
-    }
-
-    /// All cards with minY < prominenceLine, sorted by minY ascending (index 0 = oldest = rank 0).
-    private func sortedStackCards() -> [(id: UUID, minY: CGFloat)] {
-        filteredVerses.compactMap { v -> (id: UUID, minY: CGFloat)? in
-            guard let y = cardMinYs[v.id], y < prominenceLine else { return nil }
-            return (v.id, y)
-        }.sorted { $0.minY < $1.minY }
-    }
-
-    /// MinY of the card closest to the stack (smallest minY >= prominenceLine). Drives stack shift so it updates with scroll, not only after a card crosses.
-    private func approachingCardMinY() -> CGFloat? {
-        let above = filteredVerses.compactMap { cardMinYs[$0.id] }.filter { $0 >= prominenceLine }
-        return above.min()
-    }
-
-    /// Progress 0...1 as the approaching card moves from (prominenceLine + distance) down to prominenceLine. Eased.
-    private func stackShiftT(approachMinY: CGFloat?) -> CGFloat {
-        let approach = approachMinY ?? (prominenceLine + stackTransitionHeight)
-        let t = min(1, max(0, (prominenceLine + stackTransitionHeight - approach) / stackTransitionHeight))
-        return 2 * t - t * t
-    }
-
-    /// For cards with minY < prominenceLine: index in the visible stack (0 = back, 2 = front). New card gets 2, previous 2→1, 1→0; the card that was at 0 gets nil and is drawn at stackBaseY behind the new index 0.
-    private func stackIndex(for verseID: UUID) -> Int? {
-        guard let myMinY = cardMinYs[verseID], myMinY < prominenceLine else { return nil }
-        let sorted = sortedStackCards()
-        let visibleStack = Array(sorted.suffix(maxVisibleStackCount))
-        return visibleStack.firstIndex { $0.id == verseID }
-    }
-
-    /// Vertical offset for scrolled-past cards. Anchor never gets stack offset (it’s prominent).
-    private func stackOffset(for verseID: UUID) -> CGFloat? {
-        if verseID == effectiveProminentVerseID { return nil }
-        guard let minY = cardMinYs[verseID], minY < prominenceLine else { return nil }
-        let sorted = sortedStackCards()
-        let n = sorted.count
-        guard let rank = sorted.firstIndex(where: { $0.id == verseID }) else { return nil }
-
-        let approachMinY = approachingCardMinY()
-        let tShift = stackShiftT(approachMinY: approachMinY)
-
-        if n <= 3 {
-            if let idx = stackIndex(for: verseID) {
-                let slotY: CGFloat
-                if idx == 0 { slotY = stackBaseY }
-                else if idx == 1 { slotY = stackBaseY + stackPixelOffset - 6 * tShift }
-                else { slotY = stackBaseY + 2 * stackPixelOffset - 6 * tShift }
-                let isFront = (idx == 2)
-                if isFront {
-                    return slotY - minY
-                }
-                let tSettle = min(1, (prominenceLine - minY) / stackTransitionHeight)
-                let tSettleEased = 2 * tSettle - tSettle * tSettle
-                let targetY = stackEntryY + (slotY - stackEntryY) * tSettleEased
-                return targetY - minY
-            }
-            return stackBaseY - minY
-        }
-
-        let targetY: CGFloat
-        if rank < n - 4 {
-            targetY = stackBaseY
-        } else if rank == n - 4 {
-            targetY = stackBaseY
-        } else if rank == n - 3 {
-            targetY = stackBaseY
-        } else if rank == n - 2 {
-            targetY = stackBaseY + stackPixelOffset - 6 * tShift
-        } else {
-            targetY = stackBaseY + 2 * stackPixelOffset - 6 * tShift
-        }
-        return targetY - minY
-    }
-
-    /// Index-based rank in the bottom stack (0 = front card at fixed Y; cards keep their slot as others leave).
-    private func bottomStackRank(for verseID: UUID, index: Int) -> Int? {
-        let startIndex = prominentIndex + 2
-        guard index >= startIndex else { return nil }
-        return index - startIndex
-    }
-
-    /// Vertical offset for cards in the bottom stack. Front card stays at bottomStackThresholdY; positions are index-based so we don’t shift cards as others are pulled. Taper to 0 as minY approaches threshold for smooth transition into angled.
-    private func bottomStackOffset(for verseID: UUID, index: Int) -> CGFloat? {
-        if verseID == effectiveProminentVerseID { return nil }
-        guard let minY = cardMinYs[verseID], minY > bottomStackThresholdY else { return nil }
-        guard let rank = bottomStackRank(for: verseID, index: index) else { return nil }
-        let stackTargetY = bottomStackThresholdY + CGFloat(rank) * bottomStackPixelOffset
-        if minY >= bottomStackThresholdY + bottomStackToAngledTransitionHeight {
-            return stackTargetY - minY
-        }
-        let t = (minY - bottomStackThresholdY) / bottomStackToAngledTransitionHeight
-        let easeIn = 1 - (1 - t) * (1 - t)
-        let targetY = bottomStackThresholdY + (stackTargetY - bottomStackThresholdY) * easeIn
-        return targetY - minY
-    }
-
-    private var backPocketLayer: some View {
-        packFooterShape(cornerRadius: displayCornerRadius)
-            .fill(PackFooterLayout.backLayerFill)
-            .frame(maxWidth: .infinity)
-            .frame(height: max(1, footerHeight > 0 ? footerHeight + PackFooterLayout.backPeekAboveFront : PackFooterLayout.pocketBackHeight))
-            .frame(maxHeight: .infinity, alignment: .bottom)
-    }
-
-    /// zIndex: effective prominent is always 1000. Else hidden top (300), visible top (400+), prominent (1000), angled (1100+), bottom stack (1200+).
-    private func cardZIndex(verseID: UUID, index: Int) -> Double {
-        if verseID == effectiveProminentVerseID { return 1000 }
-        guard let minY = cardMinYs[verseID] else {
-            return index == prominentIndex ? 1000 : 1100 + Double(index)
-        }
-        if minY > bottomStackThresholdY {
-            if let rank = bottomStackRank(for: verseID, index: index) { return 1200 + Double(rank) }
-            return 1200
-        }
-        if minY < prominenceLine {
-            if let idx = stackIndex(for: verseID) { return 400 + Double(idx) }
-            return 300
-        }
-        if minY >= prominenceLine, minY <= angledStartY { return 1000 }
-        return 1100 + Double(index)
-    }
-
-    private var rolodexScrollContent: some View {
-        VStack(spacing: 0) {
-            if filteredVerses.isEmpty {
-                emptyVerseCard
-            } else {
-                ForEach(Array(filteredVerses.enumerated()), id: \.element.id) { index, verse in
-                    rolodexCardRow(index: index, verse: verse)
-                    if index < filteredVerses.count - 1 {
-                        Spacer()
-                            .frame(height: spacingAfterCard(at: index))
-                    }
-                }
-            }
-        }
-        .padding(.top, prominenceLine)
-        .padding(.horizontal, VerseCardLayout.horizontalPadding)
-        .padding(.bottom, scrollBottomPaddingAboveFooter + CGFloat(max(16, filteredVerses.count * 48)))
-    }
-
-    private var emptyVerseCard: some View {
-        Button {
-            showAddVerse = true
-        } label: {
-            VStack(spacing: 8) {
-                Text("No verses")
-                    .font(.headline)
-                Text("Tap + to add verses")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding()
-        }
-        .buttonStyle(.plain)
-        .rolodexCardStyle()
-        .frame(height: rolodexCardHeight)
-    }
-
-    @ViewBuilder
-    private func rolodexCardRow(index: Int, verse: Verse) -> some View {
-        let factor = prominenceFactor(for: verse.id, index: index)
-        let tilt = tiltDegrees(for: verse.id, index: index)
-        let scale = cardScale(for: verse.id, index: index)
-        let stackOff = stackOffset(for: verse.id) ?? 0
-        let angledOff = angledVisualOffset(for: verse.id, approachingVerseID: approachingProminenceVerseID, transitioningVerseID: transitioningIntoProminenceVerseID)
-        let isProminent = factor > 0.5
-        RolodexCardView(
-            verse: verse,
-            showFullVerse: true,
-            tiltDegrees: tilt,
-            isProminent: isProminent
-        ) {
-            path.append(verse)
-        }
-        .frame(height: rolodexCardHeight)
-        .scaleEffect(scale)
-        .offset(y: stackOff + angledOff + (bottomStackOffset(for: verse.id, index: index) ?? 0) + angledOverlapOffset(for: verse.id, index: index, approachingVerseID: approachingProminenceVerseID, transitioningVerseID: transitioningIntoProminenceVerseID))
-        .zIndex(cardZIndex(verseID: verse.id, index: index))
-        .id(verse.id)
-        .background(
-            GeometryReader { geo in
-                Color.clear
-                    .preference(key: CardFramePreferenceKey.self, value: [verse.id: geo.frame(in: .named("scroll")).minY])
-            }
-        )
-    }
-
-    private var mainContentStack: some View {
-        VStack(spacing: 0) {
-            TextField("Search this Pack:", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-                .background(Color(.secondarySystemBackground))
-
-            ScrollView(.vertical, showsIndicators: true) {
-                rolodexScrollContent
-            }
-            .onPreferenceChange(CardFramePreferenceKey.self) { newValue in
-                if cardMinYsChanged(newValue, cardMinYs) {
-                    cardMinYs = newValue
-                }
-            }
-            .overlay(
-                GeometryReader { geo in
-                    Color.clear
-                        .preference(key: ScrollViewHeightKey.self, value: geo.size.height)
-                        .preference(key: ScrollViewWidthKey.self, value: geo.size.width)
-                }
-                .allowsHitTesting(false)
-            )
-            .onPreferenceChange(ScrollViewHeightKey.self) { if $0 > 0 { scrollViewHeight = $0 } }
-            .onPreferenceChange(ScrollViewWidthKey.self) { w in
-                if w > 0 { scrollContentWidth = max(0, w - 2 * VerseCardLayout.horizontalPadding) }
-            }
-            .coordinateSpace(name: "scroll")
-            .scrollPosition(id: $scrollAnchorID, anchor: .top)
-            .onAppear {
-                if scrollAnchorID == nil, let first = filteredVerses.first {
-                    scrollAnchorID = first.id
-                }
-            }
-            .onChange(of: filteredVerses.count) { _, _ in
-                if scrollAnchorID == nil, let first = filteredVerses.first {
-                    scrollAnchorID = first.id
-                }
-            }
-        }
-    }
+    // MARK: Body
 
     var body: some View {
-        mainZStack
-            .onPreferenceChange(FooterHeightKey.self) { footerHeight = $0 }
-            .background(safeAreaBackground)
-            .onPreferenceChange(SafeAreaBottomKey.self) { bottomSafeArea = $0 }
-            .ignoresSafeArea(edges: .bottom)
-            .navigationTitle("My Packs")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar)
-            .toolbar { bodyToolbarContent }
-            .sheet(isPresented: $showAddVerse) {
-                AddVerseView(pack: pack, isPresented: $showAddVerse)
-            }
-            .confirmationDialog("Delete Pack", isPresented: $showDeleteConfirmation) {
-                Button("Delete", role: .destructive) {
-                    modelContext.delete(pack)
-                    try? modelContext.save()
-                    path = NavigationPath()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Are you sure you want to delete \"\(pack.title)\"? All verses will be removed.")
-            }
-            .fullScreenCover(isPresented: $showMemorization) {
-                FlashcardView(pack: pack, verses: pack.verses.sorted { $0.order < $1.order })
-            }
-            .rotation3DEffect(.degrees(-90 + 90 * flipProgress), axis: (x: 0, y: 1, z: 0))
-            .scaleEffect(0.95 + 0.05 * flipProgress)
-            .onAppear {
-                withAnimation(.easeOut(duration: 0.4)) {
-                    flipProgress = 1
-                }
-            }
-    }
-
-    private var mainZStack: some View {
         ZStack(alignment: .bottom) {
-            backPocketLayer
-            mainContentStack
-            frontFooterView
-        }
-    }
+            // Full-screen neuBg
+            Color.neuBg.ignoresSafeArea()
 
-    private var safeAreaBackground: some View {
-        GeometryReader { geo in
-            Color.clear.preference(key: SafeAreaBottomKey.self, value: geo.safeAreaInsets.bottom)
-        }
-        .allowsHitTesting(false)
-    }
+            // Main content: scroll view fills screen, header floats on top
+            verseList
 
-    @ToolbarContentBuilder
-    private var bodyToolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                showAddVerse = true
-            } label: {
-                Image(systemName: "doc.badge.plus")
-            }
-        }
-        ToolbarItem(placement: .bottomBar) {
-            Button {
-                showAddVerse = true
-            } label: {
-                Label("Add Verse", systemImage: "plus")
-            }
-        }
-        ToolbarItem(placement: .secondaryAction) {
-            Button(role: .destructive) {
-                showDeleteConfirmation = true
-            } label: {
-                Image(systemName: "trash")
-            }
-        }
-    }
+            // Floating header with gradient fade
+            VStack(spacing: 0) {
+                neuHeader
+                    .background(Color.neuBg)
 
-    private var frontFooterView: some View {
-        ZStack {
-                    VStack(spacing: 0) {
-                        // One row: close + title/subtitle on left, Review button on right
-                        HStack(alignment: .center, spacing: 14) {
-                                Button {
-                                    dismiss()
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(.body, design: .rounded).weight(.semibold))
-                                        .foregroundStyle(PackFooterLayout.frontLayerFill)
-                                        .frame(width: PackFooterLayout.iconButtonSize, height: PackFooterLayout.iconButtonSize)
-                                        .background(Circle().fill(PackFooterLayout.circleButtonFill))
-                                }
-                                .buttonStyle(.plain)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(pack.title)
-                                        .font(.system(.title2, design: .rounded).weight(.bold))
-                                        .foregroundStyle(.white)
-                                        .multilineTextAlignment(.leading)
-                                    Text("\(pack.verses.count) verses | \(Int(averageMemoryHealth * 100))% avg memory health")
-                                        .font(.system(.subheadline, design: .rounded))
-                                        .foregroundStyle(.white.opacity(0.9))
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                                Button {
-                                    showMemorization = true
-                                } label: {
-                                    Text("Review")
-                                        .font(.system(.body, design: .rounded).weight(.semibold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 24)
-                                        .padding(.vertical, 14)
-                                }
-                                .background(
-                                    RoundedRectangle(cornerRadius: PackFooterLayout.reviewCornerRadius)
-                                        .fill(PackFooterLayout.reviewButtonFill)
-                                )
-                                .buttonStyle(.plain)
-                                .disabled(pack.verses.isEmpty)
-                                .opacity(pack.verses.isEmpty ? 0.6 : 1)
-                            }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 20)
-
-                        // Spacer so rectangles extend to screen bottom; content stays above tab bar
-                        Color.clear.frame(height: max(bottomSafeArea, PackFooterLayout.minBottomSpacer))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
-                    .background(packFrontShape(cornerRadius: max(0, displayCornerRadius - PackFooterLayout.frontInset)).fill(PackFooterLayout.frontLayerFill))
-                    .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: -2)
-                }
-                .padding(PackFooterLayout.frontInset)
-                .background(
-                    GeometryReader { geo in
-                        Color.clear.preference(key: FooterHeightKey.self, value: geo.size.height)
-                    }
-                    .allowsHitTesting(false)
+                // Soft gradient fade so cards blend under the header
+                LinearGradient(
+                    colors: [Color.neuBg, Color.neuBg.opacity(0.85), Color.neuBg.opacity(0)],
+                    startPoint: .top,
+                    endPoint: .bottom
                 )
-    }
-}
+                .frame(height: 24)
+                .allowsHitTesting(false)
 
-/// Single card used in the rolodex; tilt and full-verse visibility update live from scroll position.
-struct RolodexCardView: View {
-    let verse: Verse
-    let showFullVerse: Bool
-    let tiltDegrees: Double
-    /// When true, this card is in the prominence slot and should look like it sits on top of the stack.
-    let isProminent: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text(verse.reference)
-                        .font(.headline)
-                    Spacer()
-                    if let health = verse.memoryHealth {
-                        CircularProgressView(progress: health)
-                            .frame(width: 32, height: 32)
-                    } else {
-                        Circle()
-                            .stroke(Color.gray.opacity(0.3), lineWidth: 2)
-                            .frame(width: 32, height: 32)
-                    }
-                }
-                if showFullVerse {
-                    Text(verse.text)
-                        .font(.body)
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(6)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding()
-        }
-        .buttonStyle(.plain)
-        .rolodexCardStyle(prominent: isProminent)
-        .rotation3DEffect(.degrees(tiltDegrees), axis: (x: 1, y: 0, z: 0), anchor: .center, perspective: 0.4)
-    }
-}
-
-struct ProminentVerseCardView: View {
-    let verse: Verse
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text(verse.reference)
-                        .font(.headline)
-                    Spacer()
-                    if let health = verse.memoryHealth {
-                        CircularProgressView(progress: health)
-                            .frame(width: 32, height: 32)
-                    } else {
-                        Circle()
-                            .stroke(Color.gray.opacity(0.3), lineWidth: 2)
-                            .frame(width: 32, height: 32)
-                    }
-                }
-                Text(verse.text)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(6)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding()
-        }
-        .buttonStyle(.plain)
-        .rolodexCardStyle(prominent: true)
-    }
-}
-
-struct VerseRowView: View {
-    let verse: Verse
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                Text(verse.reference)
-                    .font(.headline)
                 Spacer()
-                if let health = verse.memoryHealth {
-                    CircularProgressView(progress: health)
-                        .frame(width: 32, height: 32)
-                } else {
-                    Circle()
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 2)
-                        .frame(width: 32, height: 32)
+            }
+
+            // Floating footer
+            neuFooter
+        }
+        .navigationTitle("My Packs")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showAddVerse) {
+            AddVerseView(pack: pack, isPresented: $showAddVerse)
+        }
+        .confirmationDialog("Delete Pack", isPresented: $showDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                modelContext.delete(pack)
+                try? modelContext.save()
+                path = NavigationPath()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Are you sure you want to delete \"\(pack.title)\"? All verses will be removed.")
+        }
+        .fullScreenCover(isPresented: $showMemorization) {
+            FlashcardView(pack: pack, verses: pack.verses.sorted { $0.order < $1.order })
+        }
+    }
+
+    // MARK: - Neumorphic Header
+
+    private var neuHeader: some View {
+        HStack(spacing: 16) {
+            // Back button
+            NeuCircleButton(icon: "chevron.left") {
+                dismiss()
+            }
+
+            Spacer()
+
+            // Pack title
+            Text(pack.title)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Color(white: 0.18))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+
+            Spacer()
+
+            // Add verse button
+            NeuCircleButton(icon: "plus") {
+                showAddVerse = true
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - Verse List
+
+    private var verseList: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            if sortedVerses.isEmpty {
+                emptyState
+            } else {
+                LazyVStack(spacing: 16) {
+                    ForEach(sortedVerses) { verse in
+                        NeuVerseCard(verse: verse) {
+                            path.append(verse)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 80) // clear the floating header
+                .padding(.bottom, 200) // clear the floating footer + tab bar
+            }
+        }
+    }
+
+    // MARK: Empty / No Results
+
+    private var emptyState: some View {
+        VStack(spacing: 20) {
+            Spacer().frame(height: 120) // clear the floating header
+
+            // Neumorphic inset circle icon
+            ZStack {
+                NeuInset(shape: Circle())
+                    .frame(width: 80, height: 80)
+                Image(systemName: "book.closed")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(Color.black.opacity(0.25))
+            }
+
+            Text("No verses yet")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.5))
+
+            Text("Tap + to add your first verse")
+                .font(.system(size: 15))
+                .foregroundStyle(Color.black.opacity(0.3))
+
+            // Add verse raised button
+            Button {
+                showAddVerse = true
+            } label: {
+                ZStack {
+                    NeuRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 8, distance: 6)
+                        .frame(height: 50)
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Add Verse")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.black.opacity(0.5))
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding()
+            .buttonStyle(.plain)
+            .frame(width: 180)
+            .padding(.top, 8)
+
+            Spacer()
         }
-        .buttonStyle(.plain)
-        .rolodexCardStyle(prominent: true)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 140)
+    }
+
+    // MARK: - Floating Neumorphic Footer
+
+    private var neuFooter: some View {
+        VStack(spacing: 0) {
+            // Gradient fade
+            LinearGradient(
+                colors: [Color.neuBg.opacity(0), Color.neuBg.opacity(0.85), Color.neuBg],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 32)
+            .allowsHitTesting(false)
+
+            // Footer content
+            HStack(spacing: 16) {
+                // Stats
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(pack.verses.count) verse\(pack.verses.count == 1 ? "" : "s")")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color(white: 0.18))
+
+                    if !pack.verses.isEmpty {
+                        HStack(spacing: 6) {
+                            NeuProgressRing(progress: averageMemoryHealth, size: 18)
+                            Text("\(Int(averageMemoryHealth * 100))% memorized")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.black.opacity(0.35))
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // Delete button
+                NeuCircleButton(icon: "trash", size: 38) {
+                    showDeleteConfirmation = true
+                }
+
+                // Review button
+                Button {
+                    showMemorization = true
+                } label: {
+                    ZStack {
+                        NeuRaised(
+                            shape: RoundedRectangle(cornerRadius: 16, style: .continuous),
+                            radius: 8,
+                            distance: 6
+                        )
+                        Text("Review")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.black.opacity(0.55))
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, 14)
+                    }
+                    .fixedSize()
+                }
+                .buttonStyle(.plain)
+                .disabled(pack.verses.isEmpty)
+                .opacity(pack.verses.isEmpty ? 0.45 : 1)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 4)
+            .padding(.bottom, 100) // clear the tab bar
+            .background(Color.neuBg)
+        }
+        .ignoresSafeArea(edges: .bottom)
     }
 }
+
+// MARK: - Neumorphic Circle Button
+
+private struct NeuCircleButton: View {
+    let icon: String
+    var size: CGFloat = 44
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                NeuRaised(shape: Circle(), radius: 6, distance: 5)
+                    .frame(width: size, height: size)
+                Image(systemName: icon)
+                    .font(.system(size: size * 0.36, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.45))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Neumorphic Verse Card
+
+private struct NeuVerseCard: View {
+    let verse: Verse
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                // Left: reference + text preview
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(verse.reference)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color(white: 0.18))
+
+                    Text(verse.text)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.black.opacity(0.4))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Right: memory health ring
+                if let health = verse.memoryHealth {
+                    NeuProgressRing(progress: health, size: 36)
+                } else {
+                    // Empty neumorphic inset circle
+                    NeuInset(shape: Circle())
+                        .frame(width: 36, height: 36)
+                }
+            }
+            .padding(18)
+            .background(
+                NeuRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Neumorphic Progress Ring
+
+private struct NeuProgressRing: View {
+    let progress: Double
+    var size: CGFloat = 36
+
+    var body: some View {
+        ZStack {
+            // Inset track
+            Circle()
+                .fill(Color.neuBg)
+                .shadow(color: Color.black.opacity(0.12), radius: 2, x: 2, y: 2)
+                .shadow(color: Color.white.opacity(0.8), radius: 2, x: -1, y: -1)
+
+            // Track
+            Circle()
+                .stroke(Color.black.opacity(0.06), lineWidth: size > 24 ? 3.5 : 2.5)
+
+            // Progress arc
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    Color.black.opacity(0.32),
+                    style: StrokeStyle(lineWidth: size > 24 ? 3.5 : 2.5, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+
+            // Percentage label (only on larger rings)
+            if size >= 36 {
+                Text("\(Int(progress * 100))")
+                    .font(.system(size: size * 0.28, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.4))
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+// MARK: - Legacy Types (used by FlashcardView)
 
 struct CircularProgressView: View {
     let progress: Double
@@ -814,38 +406,21 @@ struct CircularProgressView: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.gray.opacity(0.3), lineWidth: 3)
+                .stroke(Color.black.opacity(0.1), lineWidth: 3)
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .stroke(Color.black.opacity(0.35), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
     }
 }
 
-extension View {
-    fileprivate func rolodexCardStyle(prominent: Bool = false) -> some View {
-        let cornerRadius: CGFloat = prominent ? 12 : 10
-        let shape = RoundedRectangle(cornerRadius: cornerRadius)
-        return self
-            .clipShape(shape)
-            .background(
-                shape
-                    .fill(Color(.systemBackground))
-                    .overlay(
-                        shape
-                            .strokeBorder(Color(.separator), lineWidth: 1)
-                    )
-            )
-            .compositingGroup()
-            .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
-    }
-}
+// MARK: - Preview
 
 #Preview {
     NavigationStack {
         PackDetailView(
-            pack: Pack(title: "Preview Pack"),
+            pack: Pack(title: "Romans 8"),
             path: .constant(NavigationPath())
         )
     }
