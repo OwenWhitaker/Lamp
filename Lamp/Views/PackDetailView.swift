@@ -36,7 +36,7 @@ private struct SwipeableVerseRow: View {
             actionRow
             NeuVerseCard(verse: verse, action: onTap)
                 .offset(x: effectiveOffset)
-                .highPriorityGesture(dragGesture)
+                .gesture(dragGesture)
         }
         .onChange(of: openSwipeVerseId) {
             if openSwipeVerseId != verse.id, offsetX != 0 {
@@ -67,16 +67,20 @@ private struct SwipeableVerseRow: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 10, coordinateSpace: .local)
+        DragGesture(minimumDistance: 20, coordinateSpace: .local)
             .updating($dragX) { value, state, _ in
+                // Only track horizontal movement when the gesture is predominantly horizontal
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 state = value.translation.width
             }
-            .onChanged { _ in
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 if openSwipeVerseId != verse.id {
                     openSwipeVerseId = verse.id
                 }
             }
             .onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 let raw = offsetX + value.translation.width
                 let current = clamped(raw)
 
@@ -558,32 +562,79 @@ private struct NeuProgressRing: View {
     let progress: Double
     var size: CGFloat = 36
 
+    private var ringColor: Color {
+        if progress >= 0.75 {
+            return Color(red: 0.55, green: 0.78, blue: 0.95) // light blue
+        }
+        // Lerp from red (0%) to yellow (75%)
+        let t = max(0, progress / 0.75)
+        let r = 0.9 + (0.95 - 0.9) * t   // 0.9 → 0.95
+        let g = 0.3 + (0.8 - 0.3) * t     // 0.3 → 0.8
+        let b = 0.25 + (0.3 - 0.25) * t   // 0.25 → 0.3
+        return Color(red: r, green: g, blue: b)
+    }
+
+    private var grooveWidth: CGFloat { size > 24 ? 4 : 3 }
+    // The groove sits centered on this radius
+    private var grooveRadius: CGFloat { (size - grooveWidth) / 2 }
+
     var body: some View {
         ZStack {
-            // Inset track
+            // 1. Raised disc — the whole circle is extruded from the card
             Circle()
                 .fill(Color.neuBg)
-                .shadow(color: Color.black.opacity(0.12), radius: 2, x: 2, y: 2)
-                .shadow(color: Color.white.opacity(0.8), radius: 2, x: -1, y: -1)
+                .shadow(color: Color.black.opacity(0.18), radius: 3, x: 2, y: 2)
+                .shadow(color: Color.white.opacity(0.7), radius: 3, x: -1, y: -1)
 
-            // Track
+            // 2. Groove channel — ring-shaped inset cut into the disc
+            // Outer border of the groove
             Circle()
-                .stroke(Color.black.opacity(0.06), lineWidth: size > 24 ? 3.5 : 2.5)
+                .strokeBorder(Color.black.opacity(0.07), lineWidth: 0.5)
+                .frame(width: size - 1, height: size - 1)
 
-            // Progress arc
+            // Groove floor — slightly darker than the disc surface
+            Circle()
+                .stroke(Color.black.opacity(0.04), lineWidth: grooveWidth)
+
+            // Groove inset shadow — dark on top-left, light on bottom-right
+            Circle()
+                .stroke(Color.black.opacity(0.12), lineWidth: grooveWidth)
+                .blur(radius: 0.5)
+                .offset(x: -0.5, y: -0.5)
+                .mask(Circle().stroke(lineWidth: grooveWidth + 1))
+
+            Circle()
+                .stroke(Color.white.opacity(0.5), lineWidth: grooveWidth)
+                .blur(radius: 0.5)
+                .offset(x: 0.5, y: 0.5)
+                .mask(Circle().stroke(lineWidth: grooveWidth + 1))
+
+            // 3. Emissive glow behind the progress arc
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
-                    Color.black.opacity(0.32),
-                    style: StrokeStyle(lineWidth: size > 24 ? 3.5 : 2.5, lineCap: .round)
+                    ringColor.opacity(0.4),
+                    style: StrokeStyle(lineWidth: grooveWidth + 2, lineCap: .round)
                 )
+                .blur(radius: 2)
                 .rotationEffect(.degrees(-90))
 
-            // Percentage label (only on larger rings)
+            // 4. Progress arc — slightly raised from the groove floor
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    ringColor,
+                    style: StrokeStyle(lineWidth: grooveWidth - 0.5, lineCap: .round)
+                )
+                .shadow(color: Color.black.opacity(0.2), radius: 0.5, x: 0.5, y: 0.5)
+                .shadow(color: Color.white.opacity(0.4), radius: 0.5, x: -0.3, y: -0.3)
+                .rotationEffect(.degrees(-90))
+
+            // 5. Percentage label
             if size >= 36 {
                 Text("\(Int(progress * 100))")
-                    .font(.system(size: size * 0.28, weight: .bold))
-                    .foregroundStyle(Color.black.opacity(0.4))
+                    .font(.system(size: size * 0.26, weight: .bold))
+                    .foregroundStyle(ringColor)
             }
         }
         .frame(width: size, height: size)
