@@ -7,7 +7,11 @@ import SwiftData
 // Light source: top-left. Dark shadow cast further than light highlight (asymmetric).
 
 private extension Color {
-    static let neuBg = Color(red: 40 / 255, green: 40 / 255, blue: 50 / 255)
+    static let neuBg = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 40/255, green: 40/255, blue: 50/255, alpha: 1)
+            : UIColor(red: 225/255, green: 225/255, blue: 235/255, alpha: 1)
+    })
 }
 
 private extension LinearGradient {
@@ -22,6 +26,7 @@ private let neuCorner: CGFloat = 22
 
 /// Raised surface -- extruded from the background with flat fill.
 private struct NeuRaised<S: Shape>: View {
+    @Environment(\.colorScheme) private var colorScheme
     var shape: S
     var radius: CGFloat = 10
     var distance: CGFloat = 10
@@ -29,25 +34,26 @@ private struct NeuRaised<S: Shape>: View {
     var body: some View {
         shape
             .fill(Color.neuBg)
-            .shadow(color: Color.black.opacity(0.4), radius: radius, x: distance, y: distance)
-            .shadow(color: Color.white.opacity(0.08), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.3), radius: radius, x: distance, y: distance)
+            .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 1.0), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
     }
 }
 
 /// Inset surface -- pressed into the background (blur + gradient-mask inner shadow).
 private struct NeuInset<S: Shape>: View {
+    @Environment(\.colorScheme) private var colorScheme
     var shape: S
 
     var body: some View {
         ZStack {
             shape.fill(Color.neuBg)
             shape
-                .stroke(Color.black.opacity(0.5), lineWidth: 4)
+                .stroke(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(colorScheme == .dark ? 0.5 : 0.5), lineWidth: 4)
                 .blur(radius: 4)
                 .offset(x: 2, y: 2)
                 .mask(shape.fill(LinearGradient(Color.black, Color.clear)))
             shape
-                .stroke(Color.white.opacity(0.12), lineWidth: 6)
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.12 : 1.0), lineWidth: 6)
                 .blur(radius: 4)
                 .offset(x: -2, y: -2)
                 .mask(shape.fill(LinearGradient(Color.clear, Color.black)))
@@ -58,6 +64,7 @@ private struct NeuInset<S: Shape>: View {
 // MARK: - PacksView
 
 struct PacksView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Pack.createdAt, order: .reverse) private var packs: [Pack]
     @Binding var path: NavigationPath
@@ -110,7 +117,7 @@ struct PacksView: View {
     private var titleHeader: some View {
         Text("My Packs")
             .font(.system(size: 30, weight: .bold))
-            .foregroundStyle(Color(white: 0.88))
+            .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
             .frame(maxWidth: .infinity)
             .padding(.top, 20)
             .padding(.bottom, 4)
@@ -199,6 +206,7 @@ struct PacksView: View {
 //   - Sharp top edge on the pocket (the slot opening), rounded bottom
 
 private struct NeuPackCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let pack: Pack
     let action: () -> Void
     var onLongPress: (() -> Void)? = nil
@@ -291,13 +299,13 @@ private struct NeuPackCard: View {
         VStack(spacing: 4) {
             Text(pack.title)
                 .font(.system(h > 140 ? .title3 : .headline, design: .rounded).weight(.semibold))
-                .foregroundStyle(Color.white.opacity(0.55))
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.55) : Color.black.opacity(0.55))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
 
             Text("\(verseCount) verse\(verseCount == 1 ? "" : "s")")
                 .font(.system(h > 140 ? .subheadline : .caption, design: .rounded).weight(.medium))
-                .foregroundStyle(Color.white.opacity(0.35))
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
         }
         .frame(width: pocketW - 32)
         .position(x: w / 2, y: pocketTopY + pocketH * 0.5)
@@ -307,6 +315,7 @@ private struct NeuPackCard: View {
 // MARK: - Add Card
 
 private struct NeuAddCard: View {
+    @Environment(\.colorScheme) private var colorScheme
     let action: () -> Void
 
     private let shape = RoundedRectangle(cornerRadius: neuCorner, style: .continuous)
@@ -332,12 +341,12 @@ private struct NeuAddCard: View {
 
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.white.opacity(0.35))
+                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
                 }
 
                 Text("New Pack")
                     .font(.system(.caption, design: .rounded).weight(.medium))
-                    .foregroundStyle(Color.white.opacity(0.35))
+                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
             }
         }
     }

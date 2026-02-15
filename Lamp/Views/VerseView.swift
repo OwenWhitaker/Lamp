@@ -4,7 +4,11 @@ import SwiftData
 // MARK: - Neumorphism Design System
 
 private extension Color {
-    static let neuBg = Color(red: 40 / 255, green: 40 / 255, blue: 50 / 255)
+    static let neuBg = Color(UIColor { tc in
+        tc.userInterfaceStyle == .dark
+            ? UIColor(red: 40/255, green: 40/255, blue: 50/255, alpha: 1)
+            : UIColor(red: 225/255, green: 225/255, blue: 235/255, alpha: 1)
+    })
 }
 
 private extension LinearGradient {
@@ -14,6 +18,7 @@ private extension LinearGradient {
 }
 
 private struct NeuRaised<S: Shape>: View {
+    @Environment(\.colorScheme) private var colorScheme
     var shape: S
     var radius: CGFloat = 10
     var distance: CGFloat = 10
@@ -21,24 +26,25 @@ private struct NeuRaised<S: Shape>: View {
     var body: some View {
         shape
             .fill(Color.neuBg)
-            .shadow(color: Color.black.opacity(0.4), radius: radius, x: distance, y: distance)
-            .shadow(color: Color.white.opacity(0.08), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.2), radius: radius, x: distance, y: distance)
+            .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
     }
 }
 
 private struct NeuInset<S: Shape>: View {
+    @Environment(\.colorScheme) private var colorScheme
     var shape: S
 
     var body: some View {
         ZStack {
             shape.fill(Color.neuBg)
             shape
-                .stroke(Color.black.opacity(0.5), lineWidth: 4)
+                .stroke(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(colorScheme == .dark ? 0.5 : 0.5), lineWidth: 4)
                 .blur(radius: 4)
                 .offset(x: 2, y: 2)
                 .mask(shape.fill(LinearGradient(Color.black, Color.clear)))
             shape
-                .stroke(Color.white.opacity(0.12), lineWidth: 6)
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.12 : 1.0), lineWidth: 6)
                 .blur(radius: 4)
                 .offset(x: -2, y: -2)
                 .mask(shape.fill(LinearGradient(Color.clear, Color.black)))
@@ -47,6 +53,7 @@ private struct NeuInset<S: Shape>: View {
 }
 
 private struct NeuCircleButton: View {
+    @Environment(\.colorScheme) private var colorScheme
     let icon: String
     var size: CGFloat = 44
     let action: () -> Void
@@ -58,7 +65,7 @@ private struct NeuCircleButton: View {
                     .frame(width: size, height: size)
                 Image(systemName: icon)
                     .font(.system(size: size * 0.36, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.5))
+                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.45))
             }
         }
         .buttonStyle(.plain)
@@ -72,45 +79,93 @@ private struct CardWidthKey: PreferenceKey {
     }
 }
 
-// MARK: - Neumorphic Dot Indicator
+// MARK: - Neumorphic Dot Indicator (Instagram-style sliding window)
 
 private struct NeuDotIndicator: View {
+    @Environment(\.colorScheme) private var colorScheme
     let count: Int
     let current: Int
-    private let dotSize: CGFloat = 10
+
+    private let maxVisible = 5
+    private let fullSize: CGFloat = 10
+    private let smallSize: CGFloat = 5
+
+    /// Window center lags behind `current` so you see the active dot move first
+    @State private var windowCenter: Int = 0
+
+    /// Window range based on the lagged center
+    private var windowRange: Range<Int> {
+        guard count > maxVisible else { return 0..<count }
+        let half = maxVisible / 2
+        let start = min(max(windowCenter - half, 0), count - maxVisible)
+        return start..<(start + maxVisible)
+    }
+
+    /// Small dots at edges imply "more in that direction".
+    /// At extremes, expand to 4 full-size dots on that side to show there's nothing further.
+    private func dotSize(for index: Int) -> CGFloat {
+        guard count > maxVisible else { return fullSize }
+        let range = windowRange
+        let pos = index - range.lowerBound // 0...4
+        let atLeft = range.lowerBound == 0
+        let atRight = range.upperBound == count
+
+        if atLeft && atRight { return fullSize }
+        if atLeft {
+            // No more to the left — first 4 full, last 1 small
+            return pos <= 3 ? fullSize : smallSize
+        }
+        if atRight {
+            // No more to the right — last 4 full, first 1 small
+            return pos >= 1 ? fullSize : smallSize
+        }
+        // Middle — outer 2 small, inner 3 full
+        return (pos >= 1 && pos <= 3) ? fullSize : smallSize
+    }
 
     var body: some View {
-        HStack(spacing: 10) {
-            ForEach(0..<count, id: \.self) { index in
+        HStack(spacing: 8) {
+            ForEach(Array(windowRange), id: \.self) { index in
+                let size = dotSize(for: index)
                 ZStack {
                     if index == current {
                         ZStack {
                             NeuInset(shape: Circle())
                             Circle()
-                                .fill(Color.white.opacity(0.06))
+                                .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.06))
                         }
-                        .frame(width: dotSize, height: dotSize)
+                        .frame(width: size, height: size)
                     } else {
                         // Bubble dot — raised with glossy highlight
                         ZStack {
                             Circle()
                                 .fill(Color.neuBg)
-                                .shadow(color: Color.black.opacity(0.4), radius: 2, x: 1.5, y: 1.5)
-                                .shadow(color: Color.white.opacity(0.08), radius: 2, x: -1, y: -1)
+                                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.2), radius: 2, x: 1.5, y: 1.5)
+                                .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), radius: 2, x: -1, y: -1)
 
                             // Top-left specular highlight
                             Circle()
                                 .fill(
                                     RadialGradient(
-                                        colors: [Color.white.opacity(0.12), Color.clear],
+                                        colors: [Color.white.opacity(colorScheme == .dark ? 0.12 : 0.6), Color.clear],
                                         center: .init(x: 0.35, y: 0.3),
                                         startRadius: 0,
-                                        endRadius: dotSize * 0.5
+                                        endRadius: size * 0.5
                                     )
                                 )
                         }
-                        .frame(width: dotSize, height: dotSize)
+                        .frame(width: size, height: size)
                     }
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: windowCenter)
+        .onAppear { windowCenter = current }
+        .onChange(of: current) {
+            // Delay the window scroll so the active dot moves first
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    windowCenter = current
                 }
             }
         }
@@ -120,6 +175,7 @@ private struct NeuDotIndicator: View {
 // MARK: - Verse View
 
 struct VerseView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Bindable var verse: Verse
@@ -261,7 +317,7 @@ struct VerseView: View {
 
             Text("(Tap card to flip)")
                 .font(.system(size: 14))
-                .foregroundStyle(Color.white.opacity(0.25))
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.25) : Color.black.opacity(0.25))
 
             if verses.count > 1 {
                 NeuDotIndicator(count: verses.count, current: currentIndex)
@@ -278,7 +334,7 @@ struct VerseView: View {
                     // Verse text — left-aligned with first-line indent
                     (Text("     ") + Text(v.text))
                         .font(.system(size: 16))
-                        .foregroundStyle(Color(white: 0.88))
+                        .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
@@ -286,7 +342,7 @@ struct VerseView: View {
                     // Reference centered under the text
                     Text(v.reference)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.white.opacity(0.35))
+                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
 
                     Spacer()
                 }
@@ -296,7 +352,7 @@ struct VerseView: View {
 
                     Text(v.reference)
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Color(white: 0.88))
+                        .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
 
                     Spacer()
                 }
@@ -318,7 +374,7 @@ struct VerseView: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.08), Color.clear, Color.clear],
+                            colors: [Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), Color.clear, Color.clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -370,7 +426,7 @@ struct VerseView: View {
                 )
                 Text(title)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(0.55))
+                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.55) : Color.black.opacity(0.55))
                     .padding(.horizontal, 28)
                     .padding(.vertical, 14)
             }

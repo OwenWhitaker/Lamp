@@ -24,7 +24,11 @@ private enum Tab: Int, CaseIterable, Hashable {
 
 // MARK: - Neumorphic Tab Bar Color
 
-private let neuBg = Color(red: 40 / 255, green: 40 / 255, blue: 50 / 255)
+private let neuBg = Color(UIColor { tc in
+    tc.userInterfaceStyle == .dark
+        ? UIColor(red: 40/255, green: 40/255, blue: 50/255, alpha: 1)
+        : UIColor(red: 225/255, green: 225/255, blue: 235/255, alpha: 1)
+})
 
 // MARK: - ContentView
 
@@ -90,6 +94,7 @@ struct ContentView: View {
 // MARK: - Neumorphic Tab Bar
 
 private struct NeuTabBar: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var selected: Tab
     @State private var dragX: CGFloat? = nil   // nil = use selected tab's rest position
     @State private var isDragging = false
@@ -124,8 +129,8 @@ private struct NeuTabBar: View {
                 // 2. Neumorphic pill – raised from the track floor
                 Capsule()
                     .fill(neuBg)
-                    .shadow(color: Color.black.opacity(0.5), radius: 5, x: 4, y: 4)
-                    .shadow(color: Color.white.opacity(0.07), radius: 5, x: -3, y: -3)
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.5 : 0.18), radius: 5, x: 4, y: 4)
+                    .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.07 : 0.6), radius: 5, x: -3, y: -3)
                     .frame(width: selectorW, height: selectorH)
                     .position(x: pillX, y: h / 2)
 
@@ -140,8 +145,8 @@ private struct NeuTabBar: View {
                         }
                         .foregroundStyle(
                             selected == tab
-                                ? Color.white.opacity(0.7)
-                                : Color.white.opacity(0.3)
+                                ? (colorScheme == .dark ? Color.white.opacity(0.7) : Color.black.opacity(0.6))
+                                : (colorScheme == .dark ? Color.white.opacity(0.3) : Color.black.opacity(0.28))
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
@@ -232,7 +237,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – dark along full top edge
             Capsule()
-                .stroke(Color.black.opacity(0.6), lineWidth: 7)
+                .stroke(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(colorScheme == .dark ? 0.6 : 0.7), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(y: 4)
                 .mask(Capsule().fill(
@@ -241,7 +246,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – dark along full left edge
             Capsule()
-                .stroke(Color.black.opacity(0.6), lineWidth: 7)
+                .stroke(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(colorScheme == .dark ? 0.6 : 0.7), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(x: 4)
                 .mask(Capsule().fill(
@@ -250,7 +255,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – light along full bottom edge
             Capsule()
-                .stroke(Color.white.opacity(0.1), lineWidth: 7)
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.1 : 0.9), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(y: -3)
                 .mask(Capsule().fill(
@@ -259,7 +264,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – light along full right edge
             Capsule()
-                .stroke(Color.white.opacity(0.1), lineWidth: 7)
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.1 : 0.9), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(x: -3)
                 .mask(Capsule().fill(
@@ -272,13 +277,14 @@ private struct NeuTabBar: View {
 // MARK: - Placeholder
 
 struct PlaceholderTabView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
 
     var body: some View {
         VStack(spacing: 16) {
             Text(title)
                 .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(Color(white: 0.88))
+                .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
                 .frame(maxWidth: .infinity)
                 .padding(.top, 20)
 
