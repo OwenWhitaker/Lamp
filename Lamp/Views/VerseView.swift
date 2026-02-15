@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Neumorphism Design System
 
 private extension Color {
-    static let neuBg = Color(red: 225 / 255, green: 225 / 255, blue: 235 / 255)
+    static let neuBg = Color(red: 40 / 255, green: 40 / 255, blue: 50 / 255)
 }
 
 private extension LinearGradient {
@@ -21,8 +21,8 @@ private struct NeuRaised<S: Shape>: View {
     var body: some View {
         shape
             .fill(Color.neuBg)
-            .shadow(color: Color.black.opacity(0.2), radius: radius, x: distance, y: distance)
-            .shadow(color: Color.white.opacity(0.7), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
+            .shadow(color: Color.black.opacity(0.4), radius: radius, x: distance, y: distance)
+            .shadow(color: Color.white.opacity(0.08), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
     }
 }
 
@@ -33,12 +33,12 @@ private struct NeuInset<S: Shape>: View {
         ZStack {
             shape.fill(Color.neuBg)
             shape
-                .stroke(Color.gray.opacity(0.5), lineWidth: 4)
+                .stroke(Color.black.opacity(0.5), lineWidth: 4)
                 .blur(radius: 4)
                 .offset(x: 2, y: 2)
                 .mask(shape.fill(LinearGradient(Color.black, Color.clear)))
             shape
-                .stroke(Color.white, lineWidth: 6)
+                .stroke(Color.white.opacity(0.12), lineWidth: 6)
                 .blur(radius: 4)
                 .offset(x: -2, y: -2)
                 .mask(shape.fill(LinearGradient(Color.clear, Color.black)))
@@ -58,7 +58,7 @@ private struct NeuCircleButton: View {
                     .frame(width: size, height: size)
                 Image(systemName: icon)
                     .font(.system(size: size * 0.36, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.45))
+                    .foregroundStyle(Color.white.opacity(0.5))
             }
         }
         .buttonStyle(.plain)
@@ -87,7 +87,7 @@ private struct NeuDotIndicator: View {
                         ZStack {
                             NeuInset(shape: Circle())
                             Circle()
-                                .fill(Color.black.opacity(0.08))
+                                .fill(Color.white.opacity(0.06))
                         }
                         .frame(width: dotSize, height: dotSize)
                     } else {
@@ -95,14 +95,14 @@ private struct NeuDotIndicator: View {
                         ZStack {
                             Circle()
                                 .fill(Color.neuBg)
-                                .shadow(color: Color.black.opacity(0.18), radius: 2, x: 1.5, y: 1.5)
-                                .shadow(color: Color.white.opacity(0.7), radius: 2, x: -1, y: -1)
+                                .shadow(color: Color.black.opacity(0.4), radius: 2, x: 1.5, y: 1.5)
+                                .shadow(color: Color.white.opacity(0.08), radius: 2, x: -1, y: -1)
 
                             // Top-left specular highlight
                             Circle()
                                 .fill(
                                     RadialGradient(
-                                        colors: [Color.white.opacity(0.6), Color.clear],
+                                        colors: [Color.white.opacity(0.12), Color.clear],
                                         center: .init(x: 0.35, y: 0.3),
                                         startRadius: 0,
                                         endRadius: dotSize * 0.5
@@ -261,7 +261,7 @@ struct VerseView: View {
 
             Text("(Tap card to flip)")
                 .font(.system(size: 14))
-                .foregroundStyle(Color.black.opacity(0.25))
+                .foregroundStyle(Color.white.opacity(0.25))
 
             if verses.count > 1 {
                 NeuDotIndicator(count: verses.count, current: currentIndex)
@@ -278,7 +278,7 @@ struct VerseView: View {
                     // Verse text — left-aligned with first-line indent
                     (Text("     ") + Text(v.text))
                         .font(.system(size: 16))
-                        .foregroundStyle(Color(white: 0.18))
+                        .foregroundStyle(Color(white: 0.88))
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
@@ -286,7 +286,7 @@ struct VerseView: View {
                     // Reference centered under the text
                     Text(v.reference)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.black.opacity(0.35))
+                        .foregroundStyle(Color.white.opacity(0.35))
 
                     Spacer()
                 }
@@ -296,7 +296,7 @@ struct VerseView: View {
 
                     Text(v.reference)
                         .font(.system(size: 20, weight: .bold))
-                        .foregroundStyle(Color(white: 0.18))
+                        .foregroundStyle(Color(white: 0.88))
 
                     Spacer()
                 }
@@ -318,7 +318,7 @@ struct VerseView: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.5), Color.clear, Color.clear],
+                            colors: [Color.white.opacity(0.08), Color.clear, Color.clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -370,7 +370,7 @@ struct VerseView: View {
                 )
                 Text(title)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.55))
+                    .foregroundStyle(Color.white.opacity(0.55))
                     .padding(.horizontal, 28)
                     .padding(.vertical, 14)
             }

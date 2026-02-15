@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
 
+private let neuBg = Color(red: 40 / 255, green: 40 / 255, blue: 50 / 255)
+
 struct AddPackView: View {
     @Environment(\.modelContext) private var modelContext
     @Binding var isPresented: Bool
@@ -26,11 +28,9 @@ struct AddPackView: View {
                     .padding()
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.secondarySystemBackground))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .strokeBorder(Color(.separator), lineWidth: 1)
-                            )
+                            .fill(neuBg)
+                            .shadow(color: Color.black.opacity(0.4), radius: 4, x: 2, y: 2)
+                            .shadow(color: Color.white.opacity(0.08), radius: 4, x: -1, y: -1)
                     )
 
                 Button {
@@ -45,14 +45,17 @@ struct AddPackView: View {
                     .frame(maxWidth: .infinity, minHeight: 100)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(canCreate ? Color.accentColor : Color(.tertiarySystemFill))
+                            .fill(canCreate ? Color.accentColor : neuBg)
+                            .shadow(color: Color.black.opacity(0.4), radius: 6, x: 4, y: 4)
+                            .shadow(color: Color.white.opacity(0.08), radius: 6, x: -2, y: -2)
                     )
-                    .foregroundStyle(canCreate ? .white : .secondary)
+                    .foregroundStyle(canCreate ? .white : Color.white.opacity(0.35))
                 }
                 .buttonStyle(.plain)
                 .disabled(!canCreate)
             }
             .padding()
+            .background(neuBg.ignoresSafeArea())
             .navigationTitle("My Packs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

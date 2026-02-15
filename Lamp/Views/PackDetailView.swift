@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - Neumorphism Design System
 
 private extension Color {
-    static let neuBg = Color(red: 225 / 255, green: 225 / 255, blue: 235 / 255)
+    static let neuBg = Color(red: 40 / 255, green: 40 / 255, blue: 50 / 255)
 }
 
 private extension LinearGradient {
@@ -193,8 +193,8 @@ private struct NeuRaised<S: Shape>: View {
     var body: some View {
         shape
             .fill(Color.neuBg)
-            .shadow(color: Color.black.opacity(0.2), radius: radius, x: distance, y: distance)
-            .shadow(color: Color.white.opacity(0.7), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
+            .shadow(color: Color.black.opacity(0.4), radius: radius, x: distance, y: distance)
+            .shadow(color: Color.white.opacity(0.08), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
     }
 }
 
@@ -206,12 +206,12 @@ private struct NeuInset<S: Shape>: View {
         ZStack {
             shape.fill(Color.neuBg)
             shape
-                .stroke(Color.gray.opacity(0.5), lineWidth: 4)
+                .stroke(Color.black.opacity(0.5), lineWidth: 4)
                 .blur(radius: 4)
                 .offset(x: 2, y: 2)
                 .mask(shape.fill(LinearGradient(Color.black, Color.clear)))
             shape
-                .stroke(Color.white, lineWidth: 6)
+                .stroke(Color.white.opacity(0.12), lineWidth: 6)
                 .blur(radius: 4)
                 .offset(x: -2, y: -2)
                 .mask(shape.fill(LinearGradient(Color.clear, Color.black)))
@@ -337,7 +337,7 @@ struct PackDetailView: View {
             // Pack title
             Text(pack.title)
                 .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(Color(white: 0.18))
+                .foregroundStyle(Color(white: 0.88))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
 
@@ -402,16 +402,16 @@ struct PackDetailView: View {
                     .frame(width: 80, height: 80)
                 Image(systemName: "book.closed")
                     .font(.system(size: 28, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.25))
+                    .foregroundStyle(Color.white.opacity(0.25))
             }
 
             Text("No verses yet")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.5))
+                .foregroundStyle(Color.white.opacity(0.5))
 
             Text("Tap + to add your first verse")
                 .font(.system(size: 15))
-                .foregroundStyle(Color.black.opacity(0.3))
+                .foregroundStyle(Color.white.opacity(0.3))
 
             // Add verse raised button
             Button {
@@ -426,7 +426,7 @@ struct PackDetailView: View {
                         Text("Add Verse")
                             .font(.system(size: 16, weight: .semibold))
                     }
-                    .foregroundStyle(Color.black.opacity(0.5))
+                    .foregroundStyle(Color.white.opacity(0.5))
                 }
             }
             .buttonStyle(.plain)
@@ -458,14 +458,14 @@ struct PackDetailView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(pack.verses.count) verse\(pack.verses.count == 1 ? "" : "s")")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color(white: 0.18))
+                        .foregroundStyle(Color(white: 0.88))
 
                     if !pack.verses.isEmpty {
                         HStack(spacing: 6) {
                             NeuProgressRing(progress: averageMemoryHealth, size: 18)
                             Text("\(Int(averageMemoryHealth * 100))% memorized")
                                 .font(.system(size: 12))
-                                .foregroundStyle(Color.black.opacity(0.35))
+                                .foregroundStyle(Color.white.opacity(0.35))
                         }
                     }
                 }
@@ -484,7 +484,7 @@ struct PackDetailView: View {
                         )
                         Text("Review")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Color.black.opacity(0.55))
+                            .foregroundStyle(Color.white.opacity(0.55))
                             .padding(.horizontal, 28)
                             .padding(.vertical, 14)
                     }
@@ -517,7 +517,7 @@ private struct NeuCircleButton: View {
                     .frame(width: size, height: size)
                 Image(systemName: icon)
                     .font(.system(size: size * 0.36, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.45))
+                    .foregroundStyle(Color.white.opacity(0.5))
             }
         }
         .buttonStyle(.plain)
@@ -527,7 +527,7 @@ private struct NeuCircleButton: View {
 private struct NeuSwipeActionCircle: View {
     let icon: String
     var size: CGFloat = 44
-    var iconColor: Color = Color.black.opacity(0.45)
+    var iconColor: Color = Color.white.opacity(0.5)
 
     var body: some View {
         ZStack {
@@ -552,11 +552,11 @@ private struct NeuVerseCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(verse.reference)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color(white: 0.18))
+                    .foregroundStyle(Color(white: 0.88))
 
                 Text(verse.text)
                     .font(.system(size: 14))
-                    .foregroundStyle(Color.black.opacity(0.4))
+                    .foregroundStyle(Color.white.opacity(0.4))
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
             }
@@ -607,8 +607,8 @@ private struct NeuProgressRing: View {
             // 1. Raised disc — the whole circle is extruded from the card
             Circle()
                 .fill(Color.neuBg)
-                .shadow(color: Color.black.opacity(0.18), radius: 3, x: 2, y: 2)
-                .shadow(color: Color.white.opacity(0.7), radius: 3, x: -1, y: -1)
+                .shadow(color: Color.black.opacity(0.4), radius: 3, x: 2, y: 2)
+                .shadow(color: Color.white.opacity(0.08), radius: 3, x: -1, y: -1)
 
             // 2. Groove channel — ring-shaped inset cut into the disc
             // Outer border of the groove
@@ -628,7 +628,7 @@ private struct NeuProgressRing: View {
                 .mask(Circle().stroke(lineWidth: grooveWidth + 1))
 
             Circle()
-                .stroke(Color.white.opacity(0.5), lineWidth: grooveWidth)
+                .stroke(Color.white.opacity(0.1), lineWidth: grooveWidth)
                 .blur(radius: 0.5)
                 .offset(x: 0.5, y: 0.5)
                 .mask(Circle().stroke(lineWidth: grooveWidth + 1))
@@ -673,10 +673,10 @@ struct CircularProgressView: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.black.opacity(0.1), lineWidth: 3)
+                .stroke(Color.white.opacity(0.1), lineWidth: 3)
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(Color.black.opacity(0.35), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .stroke(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
     }

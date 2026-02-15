@@ -7,7 +7,7 @@ import SwiftData
 // Light source: top-left. Dark shadow cast further than light highlight (asymmetric).
 
 private extension Color {
-    static let neuBg = Color(red: 225 / 255, green: 225 / 255, blue: 235 / 255)
+    static let neuBg = Color(red: 40 / 255, green: 40 / 255, blue: 50 / 255)
 }
 
 private extension LinearGradient {
@@ -29,8 +29,8 @@ private struct NeuRaised<S: Shape>: View {
     var body: some View {
         shape
             .fill(Color.neuBg)
-            .shadow(color: Color.black.opacity(0.2), radius: radius, x: distance, y: distance)
-            .shadow(color: Color.white.opacity(0.7), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
+            .shadow(color: Color.black.opacity(0.4), radius: radius, x: distance, y: distance)
+            .shadow(color: Color.white.opacity(0.08), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
     }
 }
 
@@ -42,12 +42,12 @@ private struct NeuInset<S: Shape>: View {
         ZStack {
             shape.fill(Color.neuBg)
             shape
-                .stroke(Color.gray.opacity(0.5), lineWidth: 4)
+                .stroke(Color.black.opacity(0.5), lineWidth: 4)
                 .blur(radius: 4)
                 .offset(x: 2, y: 2)
                 .mask(shape.fill(LinearGradient(Color.black, Color.clear)))
             shape
-                .stroke(Color.white, lineWidth: 6)
+                .stroke(Color.white.opacity(0.12), lineWidth: 6)
                 .blur(radius: 4)
                 .offset(x: -2, y: -2)
                 .mask(shape.fill(LinearGradient(Color.clear, Color.black)))
@@ -110,7 +110,7 @@ struct PacksView: View {
     private var titleHeader: some View {
         Text("My Packs")
             .font(.system(size: 30, weight: .bold))
-            .foregroundStyle(Color(white: 0.18))
+            .foregroundStyle(Color(white: 0.88))
             .frame(maxWidth: .infinity)
             .padding(.top, 20)
             .padding(.bottom, 4)
@@ -291,13 +291,13 @@ private struct NeuPackCard: View {
         VStack(spacing: 4) {
             Text(pack.title)
                 .font(.system(h > 140 ? .title3 : .headline, design: .rounded).weight(.semibold))
-                .foregroundStyle(Color.black.opacity(0.55))
+                .foregroundStyle(Color.white.opacity(0.55))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
 
             Text("\(verseCount) verse\(verseCount == 1 ? "" : "s")")
                 .font(.system(h > 140 ? .subheadline : .caption, design: .rounded).weight(.medium))
-                .foregroundStyle(Color.black.opacity(0.28))
+                .foregroundStyle(Color.white.opacity(0.35))
         }
         .frame(width: pocketW - 32)
         .position(x: w / 2, y: pocketTopY + pocketH * 0.5)
@@ -332,12 +332,12 @@ private struct NeuAddCard: View {
 
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.black.opacity(0.35))
+                        .foregroundStyle(Color.white.opacity(0.35))
                 }
 
                 Text("New Pack")
                     .font(.system(.caption, design: .rounded).weight(.medium))
-                    .foregroundStyle(Color.black.opacity(0.35))
+                    .foregroundStyle(Color.white.opacity(0.35))
             }
         }
     }

@@ -24,7 +24,7 @@ private enum Tab: Int, CaseIterable, Hashable {
 
 // MARK: - Neumorphic Tab Bar Color
 
-private let neuBg = Color(red: 225 / 255, green: 225 / 255, blue: 235 / 255)
+private let neuBg = Color(red: 40 / 255, green: 40 / 255, blue: 50 / 255)
 
 // MARK: - ContentView
 
@@ -124,8 +124,8 @@ private struct NeuTabBar: View {
                 // 2. Neumorphic pill – raised from the track floor
                 Capsule()
                     .fill(neuBg)
-                    .shadow(color: Color.black.opacity(0.18), radius: 5, x: 4, y: 4)
-                    .shadow(color: Color.white.opacity(0.6), radius: 5, x: -3, y: -3)
+                    .shadow(color: Color.black.opacity(0.5), radius: 5, x: 4, y: 4)
+                    .shadow(color: Color.white.opacity(0.07), radius: 5, x: -3, y: -3)
                     .frame(width: selectorW, height: selectorH)
                     .position(x: pillX, y: h / 2)
 
@@ -140,8 +140,8 @@ private struct NeuTabBar: View {
                         }
                         .foregroundStyle(
                             selected == tab
-                                ? Color.black.opacity(0.6)
-                                : Color.black.opacity(0.28)
+                                ? Color.white.opacity(0.7)
+                                : Color.white.opacity(0.3)
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
@@ -232,7 +232,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – dark along full top edge
             Capsule()
-                .stroke(Color.gray.opacity(0.7), lineWidth: 7)
+                .stroke(Color.black.opacity(0.6), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(y: 4)
                 .mask(Capsule().fill(
@@ -241,7 +241,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – dark along full left edge
             Capsule()
-                .stroke(Color.gray.opacity(0.7), lineWidth: 7)
+                .stroke(Color.black.opacity(0.6), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(x: 4)
                 .mask(Capsule().fill(
@@ -250,7 +250,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – light along full bottom edge
             Capsule()
-                .stroke(Color.white.opacity(0.9), lineWidth: 7)
+                .stroke(Color.white.opacity(0.1), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(y: -3)
                 .mask(Capsule().fill(
@@ -259,7 +259,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – light along full right edge
             Capsule()
-                .stroke(Color.white.opacity(0.9), lineWidth: 7)
+                .stroke(Color.white.opacity(0.1), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(x: -3)
                 .mask(Capsule().fill(
@@ -278,7 +278,7 @@ struct PlaceholderTabView: View {
         VStack(spacing: 16) {
             Text(title)
                 .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(Color(white: 0.18))
+                .foregroundStyle(Color(white: 0.88))
                 .frame(maxWidth: .infinity)
                 .padding(.top, 20)
 

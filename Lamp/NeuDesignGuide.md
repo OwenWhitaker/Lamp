@@ -19,10 +19,10 @@ Reference: [Hacking with Swift — How to build neumorphic designs with SwiftUI]
 ## Background Color
 
 ```swift
-Color(red: 225/255, green: 225/255, blue: 235/255)  // neuBg
+Color(red: 40/255, green: 40/255, blue: 50/255)  // neuBg (dark mode)
 ```
 
-This is dark enough that `Color.white` shadows glow visibly, but light enough that `Color.black` shadows read as depth rather than darkness.
+A deep charcoal with a slight cool tint. Dark enough for comfortable low-light use while still allowing shadow-based depth cues to read clearly.
 
 ---
 
@@ -39,8 +39,8 @@ Used for: cards, buttons, the tab bar pill selector.
 ```swift
 shape
     .fill(neuBg)
-    .shadow(color: Color.black.opacity(0.2), radius: R, x: D, y: D)
-    .shadow(color: Color.white.opacity(0.7), radius: R, x: -D * 0.5, y: -D * 0.5)
+    .shadow(color: Color.black.opacity(0.4), radius: R, x: D, y: D)
+    .shadow(color: Color.white.opacity(0.08), radius: R, x: -D * 0.5, y: -D * 0.5)
 ```
 
 Where:
@@ -52,10 +52,10 @@ Where:
 
 | Element | R | D | Dark opacity | White opacity |
 |---------|---|---|-------------|---------------|
-| Large card (300pt) | 10 | 10 | 0.2 | 0.7 |
-| Medium card (pack card) | 10 | 10 | 0.2 | 0.7 |
-| Small element (pill in track) | 5 | 4 | 0.18 | 0.6 |
-| Tiny element (circle button) | 6 | 5 | 0.2 | 0.7 |
+| Large card (300pt) | 10 | 10 | 0.4 | 0.08 |
+| Medium card (pack card) | 10 | 10 | 0.4 | 0.08 |
+| Small element (pill in track) | 5 | 4 | 0.5 | 0.07 |
+| Tiny element (circle button) | 6 | 5 | 0.4 | 0.08 |
 
 ### Key mistakes to avoid
 
@@ -81,7 +81,7 @@ ZStack {
 
     // Dark inner shadow (top-left crease)
     shape
-        .stroke(Color.gray.opacity(0.5), lineWidth: 4)
+        .stroke(Color.black.opacity(0.5), lineWidth: 4)
         .blur(radius: 4)
         .offset(x: 2, y: 2)
         .mask(shape.fill(
@@ -90,7 +90,7 @@ ZStack {
 
     // Light inner shadow (bottom-right highlight)
     shape
-        .stroke(Color.white, lineWidth: 6)
+        .stroke(Color.white.opacity(0.12), lineWidth: 6)
         .blur(radius: 4)
         .offset(x: -2, y: -2)
         .mask(shape.fill(
@@ -110,28 +110,28 @@ ZStack {
     shape.fill(neuBg)
 
     // Dark – full top edge
-    shape.stroke(Color.gray.opacity(0.7), lineWidth: 7)
+    shape.stroke(Color.black.opacity(0.6), lineWidth: 7)
         .blur(radius: 5).offset(y: 4)
         .mask(shape.fill(
             LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .center)
         ))
 
     // Dark – full left edge
-    shape.stroke(Color.gray.opacity(0.7), lineWidth: 7)
+    shape.stroke(Color.black.opacity(0.6), lineWidth: 7)
         .blur(radius: 5).offset(x: 4)
         .mask(shape.fill(
             LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .center)
         ))
 
     // Light – full bottom edge
-    shape.stroke(Color.white.opacity(0.9), lineWidth: 7)
+    shape.stroke(Color.white.opacity(0.1), lineWidth: 7)
         .blur(radius: 5).offset(y: -3)
         .mask(shape.fill(
             LinearGradient(colors: [.black, .clear], startPoint: .bottom, endPoint: .center)
         ))
 
     // Light – full right edge
-    shape.stroke(Color.white.opacity(0.9), lineWidth: 7)
+    shape.stroke(Color.white.opacity(0.1), lineWidth: 7)
         .blur(radius: 5).offset(x: -3)
         .mask(shape.fill(
             LinearGradient(colors: [.black, .clear], startPoint: .trailing, endPoint: .center)
@@ -143,9 +143,9 @@ ZStack {
 
 | Depth feel | lineWidth | blur | offset | dark opacity | light opacity |
 |-----------|-----------|------|--------|-------------|---------------|
-| Subtle | 4 | 4 | 2 | 0.5 | 0.8 |
-| Medium | 5–6 | 4–5 | 3 | 0.55–0.6 | 0.85 |
-| Deep | 7 | 5 | 4 | 0.7 | 0.9 |
+| Subtle | 4 | 4 | 2 | 0.5 | 0.12 |
+| Medium | 5–6 | 4–5 | 3 | 0.55–0.6 | 0.1 |
+| Deep | 7 | 5 | 4 | 0.6 | 0.1 |
 
 ### Key mistakes to avoid
 
@@ -181,10 +181,10 @@ let pillHeight = trackHeight - inset * 2
 
 | Shadow type | Color | Typical opacity |
 |------------|-------|----------------|
-| Dark outer (raised) | `Color.black` | 0.15–0.2 |
-| Light outer (raised) | `Color.white` | 0.6–0.7 |
-| Dark inner (inset) | `Color.gray` | 0.5–0.7 |
-| Light inner (inset) | `Color.white` | 0.8–0.9 |
+| Dark outer (raised) | `Color.black` | 0.4 |
+| Light outer (raised) | `Color.white` | 0.07–0.08 |
+| Dark inner (inset) | `Color.black` | 0.5–0.6 |
+| Light inner (inset) | `Color.white` | 0.1–0.12 |
 
 **Never use colored shadows.** The neumorphic system is monochromatic — all shadows are grayscale.
 
