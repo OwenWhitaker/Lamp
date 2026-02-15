@@ -22,6 +22,7 @@ private struct SwipeableVerseRow: View {
 
     @State private var offsetX: CGFloat = 0
     @GestureState private var dragX: CGFloat = 0
+    @State private var isHorizontalDrag: Bool?
 
     private let actionSize: CGFloat = 48
     private let actionGap: CGFloat = 10
@@ -31,12 +32,27 @@ private struct SwipeableVerseRow: View {
         .interpolatingSpring(stiffness: 260, damping: 22)
     }
 
+    @State private var didSwipe = false
+
     var body: some View {
         ZStack {
             actionRow
-            NeuVerseCard(verse: verse, action: onTap)
+            NeuVerseCard(verse: verse)
                 .offset(x: effectiveOffset)
-                .gesture(dragGesture)
+                .onTapGesture {
+                    guard !didSwipe else {
+                        didSwipe = false
+                        return
+                    }
+                    if offsetX != 0 {
+                        // Close open swipe instead of navigating
+                        withAnimation(settleSpring) { offsetX = 0 }
+                        openSwipeVerseId = nil
+                    } else {
+                        onTap()
+                    }
+                }
+                .simultaneousGesture(dragGesture)
         }
         .onChange(of: openSwipeVerseId) {
             if openSwipeVerseId != verse.id, offsetX != 0 {
@@ -66,21 +82,32 @@ private struct SwipeableVerseRow: View {
         .padding(.horizontal, 12)
     }
 
+    /// Horizontal dead zone before swipe engages — gives ScrollView priority
+    private let swipeDeadZone: CGFloat = 5
+
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 20, coordinateSpace: .local)
+        DragGesture(minimumDistance: 24, coordinateSpace: .local)
             .updating($dragX) { value, state, _ in
-                // Only track horizontal movement when the gesture is predominantly horizontal
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                state = value.translation.width
+                guard isHorizontalDrag == true else { return }
+                // Subtract dead zone so the card doesn't jump
+                let adjusted = value.translation.width - (value.translation.width > 0 ? swipeDeadZone : -swipeDeadZone)
+                state = adjusted
             }
             .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                // Lock direction once past the dead zone
+                if isHorizontalDrag == nil,
+                   abs(value.translation.width) > swipeDeadZone {
+                    isHorizontalDrag = abs(value.translation.width) > abs(value.translation.height) * 1.8
+                }
+                guard isHorizontalDrag == true else { return }
                 if openSwipeVerseId != verse.id {
                     openSwipeVerseId = verse.id
                 }
             }
             .onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                defer { isHorizontalDrag = nil }
+                guard isHorizontalDrag == true else { return }
+                didSwipe = true
                 let raw = offsetX + value.translation.width
                 let current = clamped(raw)
 
@@ -518,41 +545,38 @@ private struct NeuSwipeActionCircle: View {
 
 private struct NeuVerseCard: View {
     let verse: Verse
-    let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                // Left: reference + text preview
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(verse.reference)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color(white: 0.18))
+        HStack(spacing: 14) {
+            // Left: reference + text preview
+            VStack(alignment: .leading, spacing: 6) {
+                Text(verse.reference)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(white: 0.18))
 
-                    Text(verse.text)
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.black.opacity(0.4))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Right: memory health ring
-                if let health = verse.memoryHealth {
-                    NeuProgressRing(progress: health, size: 36)
-                } else {
-                    // Empty neumorphic inset circle
-                    NeuInset(shape: Circle())
-                        .frame(width: 36, height: 36)
-                }
+                Text(verse.text)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.black.opacity(0.4))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
             }
-            .padding(18)
-            .background(
-                NeuRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            )
-            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Right: memory health ring
+            if let health = verse.memoryHealth {
+                NeuProgressRing(progress: health, size: 36)
+            } else {
+                // Empty neumorphic inset circle
+                NeuInset(shape: Circle())
+                    .frame(width: 36, height: 36)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(18)
+        .background(
+            NeuRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        )
+        .padding(.vertical, 8)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
