@@ -14,7 +14,6 @@ struct MemorizationView: View {
     @State private var deck: [Verse] = []
     @State private var currentIndex: Int = 0
     @State private var isFlipped = false
-    @State private var showSessionSettings = false
     @State private var dragOffset: CGFloat = 0
     @State private var showCongrats = false
 
@@ -52,9 +51,6 @@ struct MemorizationView: View {
                 Spacer()
             }
         }
-        .sheet(isPresented: $showSessionSettings) {
-            SessionSettingsPlaceholderView()
-        }
         .sheet(isPresented: $showCongrats, onDismiss: { dismiss() }) {
             CongratsView(verseCount: verses.count, packName: pack?.title)
         }
@@ -73,7 +69,7 @@ struct MemorizationView: View {
 
     private var neuHeader: some View {
         HStack(spacing: 16) {
-            NeuCircleButton(icon: "xmark") {
+            NeuCircleButton(icon: "chevron.left") {
                 dismiss()
             }
 
@@ -85,9 +81,8 @@ struct MemorizationView: View {
 
             Spacer()
 
-            NeuCircleButton(icon: "gearshape") {
-                showSessionSettings = true
-            }
+            // Invisible spacer to keep title centered
+            Color.clear.frame(width: 44, height: 44)
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
@@ -98,7 +93,7 @@ struct MemorizationView: View {
 
     private func cardContent(verse: Verse) -> some View {
         VStack(spacing: 12) {
-            Spacer().frame(height: 76) // clear the header
+            Spacer().frame(height: 84) // clear the header + gradient
 
             // Swipe labels above the card
             swipeHints
@@ -187,13 +182,13 @@ struct MemorizationView: View {
         let rightExtra: CGFloat = dragProgress > 0 ? dragProgress * 60 : 0
 
         return HStack {
-            // Left: xmark — raised tab bleeding off left edge, icon centered under header xmark
+            // Left: xmark — raised tab bleeding off left edge
             ZStack(alignment: .trailing) {
                 NeuRaised(shape: UnevenRoundedRectangle(
                     topLeadingRadius: 0, bottomLeadingRadius: 0,
                     bottomTrailingRadius: cornerR, topTrailingRadius: cornerR,
                     style: .continuous
-                ), radius: 8, distance: 7)
+                ), radius: 5, distance: 4)
                 embossedIcon("xmark", color: xColor)
                     .frame(width: 44)
             }
@@ -203,13 +198,13 @@ struct MemorizationView: View {
 
             Spacer()
 
-            // Right: checkmark — raised tab bleeding off right edge, icon centered under header gear
+            // Right: checkmark — raised tab bleeding off right edge
             ZStack(alignment: .leading) {
                 NeuRaised(shape: UnevenRoundedRectangle(
                     topLeadingRadius: cornerR, bottomLeadingRadius: cornerR,
                     bottomTrailingRadius: 0, topTrailingRadius: 0,
                     style: .continuous
-                ), radius: 8, distance: 7)
+                ), radius: 5, distance: 4)
                 embossedIcon("checkmark", color: checkColor)
                     .frame(width: 44)
             }
