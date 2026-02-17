@@ -19,6 +19,7 @@
 		A10000000000000000000013 /* AddVerseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000014 /* AddVerseView.swift */; };
 		A10000000000000000000015 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000016 /* Assets.xcassets */; };
 		A10000000000000000000017 /* FlashcardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000018 /* FlashcardView.swift */; };
+		A10000000000000000000019 /* NeuDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001C /* NeuDesignSystem.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,7 @@
 		A10000000000000000000014 /* AddVerseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddVerseView.swift; sourceTree = "<group>"; };
 		A10000000000000000000016 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A10000000000000000000018 /* FlashcardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlashcardView.swift; sourceTree = "<group>"; };
+		A1000000000000000000001C /* NeuDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuDesignSystem.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -53,6 +55,7 @@
 			children = (
 				A10000000000000000000002 /* LampApp.swift */,
 				A10000000000000000000004 /* ContentView.swift */,
+				A1000000000000000000001C /* NeuDesignSystem.swift */,
 				A1000000000000000000001E /* Models */,
 				A1000000000000000000001F /* Views */,
 				A10000000000000000000020 /* Resources */,
@@ -182,6 +185,7 @@
 				A10000000000000000000011 /* MemorizationView.swift in Sources */,
 				A10000000000000000000013 /* AddVerseView.swift in Sources */,
 				A10000000000000000000017 /* FlashcardView.swift in Sources */,
+				A10000000000000000000019 /* NeuDesignSystem.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

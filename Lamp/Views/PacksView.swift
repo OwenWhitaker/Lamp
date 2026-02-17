@@ -1,66 +1,6 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Neumorphism Design System
-// Based on https://hackingwithswift.com/articles/213/how-to-build-neumorphic-designs-with-swiftui
-// Elements are the SAME color as the background. Depth comes only from shadows.
-// Light source: top-left. Dark shadow cast further than light highlight (asymmetric).
-
-private extension Color {
-    static let neuBg = Color(UIColor { tc in
-        tc.userInterfaceStyle == .dark
-            ? UIColor(red: 40/255, green: 40/255, blue: 50/255, alpha: 1)
-            : UIColor(red: 225/255, green: 225/255, blue: 235/255, alpha: 1)
-    })
-}
-
-private extension LinearGradient {
-    init(_ colors: Color...) {
-        self.init(gradient: Gradient(colors: colors), startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
-}
-
-private let neuCorner: CGFloat = 22
-
-// MARK: - Neumorphic Primitives
-
-/// Raised surface -- extruded from the background with flat fill.
-private struct NeuRaised<S: Shape>: View {
-    @Environment(\.colorScheme) private var colorScheme
-    var shape: S
-    var radius: CGFloat = 10
-    var distance: CGFloat = 10
-
-    var body: some View {
-        shape
-            .fill(Color.neuBg)
-            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.3), radius: radius, x: distance, y: distance)
-            .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 1.0), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
-    }
-}
-
-/// Inset surface -- pressed into the background (blur + gradient-mask inner shadow).
-private struct NeuInset<S: Shape>: View {
-    @Environment(\.colorScheme) private var colorScheme
-    var shape: S
-
-    var body: some View {
-        ZStack {
-            shape.fill(Color.neuBg)
-            shape
-                .stroke(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(colorScheme == .dark ? 0.5 : 0.5), lineWidth: 4)
-                .blur(radius: 4)
-                .offset(x: 2, y: 2)
-                .mask(shape.fill(LinearGradient(Color.black, Color.clear)))
-            shape
-                .stroke(Color.white.opacity(colorScheme == .dark ? 0.12 : 1.0), lineWidth: 6)
-                .blur(radius: 4)
-                .offset(x: -2, y: -2)
-                .mask(shape.fill(LinearGradient(Color.clear, Color.black)))
-        }
-    }
-}
-
 // MARK: - PacksView
 
 struct PacksView: View {
@@ -80,7 +20,7 @@ struct PacksView: View {
         GridItem(.flexible(), spacing: 20)
     ]
 
-    private var useThirdsLayout: Bool { packs.count <= 2 }
+    private var useThirdsLayout: Bool { packs.count < 3 }
 
     var body: some View {
         Group {
@@ -124,24 +64,46 @@ struct PacksView: View {
     // MARK: Layouts
 
     private var thirdsLayout: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 20) {
-                titleHeader
+        ZStack(alignment: .bottom) {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 20) {
+                    titleHeader
 
-                if packs.isEmpty {
-                    NeuAddCard { showAddPack = true }
-                } else {
-                    ForEach(packs) { pack in
-                        NeuPackCard(pack: pack, action: { path.append(pack) }, onLongPress: {
-                            packForAction = pack
-                            showActionDialog = true
-                        })
+                    if packs.isEmpty {
+                        NeuAddCard { showAddPack = true }
+                    } else {
+                        ForEach(packs) { pack in
+                            NeuPackCard(pack: pack, action: { path.append(pack) }, onLongPress: {
+                                packForAction = pack
+                                showActionDialog = true
+                            })
+                        }
                     }
-                    NeuAddCard(compact: true) { showAddPack = true }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 180)
+            }
+
+            if !packs.isEmpty {
+                // Floating footer: gradient fade + circular add button
+                VStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [Color.neuBg.opacity(0), Color.neuBg.opacity(0.85), Color.neuBg],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 32)
+                    .allowsHitTesting(false)
+
+                    NeuCircleButton(icon: "plus", size: 48) {
+                        showAddPack = true
+                    }
+                    .padding(.top, 4)
+                    .padding(.bottom, 120)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.neuBg)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 300)
         }
         .background(Color.neuBg)
     }

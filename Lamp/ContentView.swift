@@ -22,14 +22,6 @@ private enum Tab: Int, CaseIterable, Hashable {
     }
 }
 
-// MARK: - Neumorphic Tab Bar Color
-
-private let neuBg = Color(UIColor { tc in
-    tc.userInterfaceStyle == .dark
-        ? UIColor(red: 40/255, green: 40/255, blue: 50/255, alpha: 1)
-        : UIColor(red: 225/255, green: 225/255, blue: 235/255, alpha: 1)
-})
-
 // MARK: - ContentView
 
 struct ContentView: View {
@@ -71,20 +63,21 @@ struct ContentView: View {
 
             // Floating tab bar with gradient fade
             VStack(spacing: 0) {
-                // Soft gradient fade from transparent to neuBg
+                // Soft gradient fade from transparent to neuBg (hidden on packs tab — it has its own footer gradient)
                 LinearGradient(
-                    colors: [neuBg.opacity(0), neuBg.opacity(0.8), neuBg],
+                    colors: [Color.neuBg.opacity(0), Color.neuBg.opacity(0.8), Color.neuBg],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(height: 28)
+                .opacity(selectedTab == .packs ? 0 : 1)
 
                 // Tab bar on solid background
                 NeuTabBar(selected: $selectedTab)
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 4)
-                    .background(neuBg)
+                    .background(Color.neuBg)
             }
             .ignoresSafeArea(edges: .bottom)
         }
@@ -128,7 +121,7 @@ private struct NeuTabBar: View {
 
                 // 2. Neumorphic pill – raised from the track floor
                 Capsule()
-                    .fill(neuBg)
+                    .fill(Color.neuBg)
                     .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.5 : 0.18), radius: 5, x: 4, y: 4)
                     .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.07 : 0.6), radius: 5, x: -3, y: -3)
                     .frame(width: selectorW, height: selectorH)
@@ -233,7 +226,7 @@ private struct NeuTabBar: View {
     private var trackBody: some View {
         ZStack {
             // Base fill – same as background
-            Capsule().fill(neuBg)
+            Capsule().fill(Color.neuBg)
 
             // Inner shadow – dark along full top edge
             Capsule()
@@ -297,7 +290,7 @@ struct PlaceholderTabView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(neuBg)
+        .background(Color.neuBg)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
