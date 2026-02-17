@@ -3,20 +3,20 @@ import SwiftUI
 // MARK: - Tab Definition
 
 private enum Tab: Int, CaseIterable, Hashable {
-    case packs = 0, search, settings
+    case home = 0, packs, settings
 
     var label: String {
         switch self {
+        case .home: "Home"
         case .packs: "My Packs"
-        case .search: "Search"
         case .settings: "Settings"
         }
     }
 
     var icon: String {
         switch self {
+        case .home: "house.fill"
         case .packs: "folder.fill"
-        case .search: "magnifyingglass"
         case .settings: "gearshape"
         }
     }
@@ -51,12 +51,12 @@ struct ContentView: View {
                 .opacity(selectedTab == .packs ? 1 : 0)
 
                 NavigationStack {
-                    PlaceholderTabView(title: "Search")
+                    HomeView()
                 }
-                .opacity(selectedTab == .search ? 1 : 0)
+                .opacity(selectedTab == .home ? 1 : 0)
 
                 NavigationStack {
-                    PlaceholderTabView(title: "Settings")
+                    SettingsView()
                 }
                 .opacity(selectedTab == .settings ? 1 : 0)
             }
@@ -264,36 +264,6 @@ private struct NeuTabBar: View {
                     LinearGradient(colors: [.black, .clear], startPoint: .trailing, endPoint: .center)
                 ))
         }
-    }
-}
-
-// MARK: - Placeholder
-
-struct PlaceholderTabView: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let title: String
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text(title)
-                .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
-                .frame(maxWidth: .infinity)
-                .padding(.top, 20)
-
-            Spacer()
-
-            Text("Coming soon")
-                .font(.title2)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.neuBg)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
