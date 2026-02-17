@@ -91,7 +91,11 @@ struct PacksView: View {
             }
         }
         .background(Color.neuBg.ignoresSafeArea())
-        .confirmationDialog("Pack", isPresented: $showActionDialog, titleVisibility: .visible) {
+        .alert(packForAction?.title ?? "Pack", isPresented: $showActionDialog) {
+            Button("Rename") {
+                renameText = packForAction?.title ?? ""
+                showRenameSheet = true
+            }
             Button("Delete", role: .destructive) {
                 if let pack = packForAction {
                     modelContext.delete(pack)
@@ -99,13 +103,7 @@ struct PacksView: View {
                 }
                 packForAction = nil
             }
-            Button("Rename") {
-                renameText = packForAction?.title ?? ""
-                showRenameSheet = true
-            }
             Button("Cancel", role: .cancel) { packForAction = nil }
-        } message: {
-            Text(packForAction.map { "\"\($0.title)\"" } ?? "")
         }
         .sheet(isPresented: $showRenameSheet, onDismiss: { packForAction = nil }) {
             renameSheet
@@ -139,11 +137,11 @@ struct PacksView: View {
                             showActionDialog = true
                         })
                     }
-                    NeuAddCard { showAddPack = true }
+                    NeuAddCard(compact: true) { showAddPack = true }
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.bottom, 80) // clear the floating tab bar
+            .padding(.bottom, 300)
         }
         .background(Color.neuBg)
     }
@@ -225,7 +223,7 @@ private struct NeuPackCard: View {
 
     var body: some View {
         cardBody
-            .aspectRatio(2.0 / 1.0, contentMode: .fit)
+            .aspectRatio(3.0 / 2.0, contentMode: .fit)
             .contentShape(.rect)
             .onTapGesture { action() }
             .onLongPressGesture(minimumDuration: 0.5) { onLongPress?() }
@@ -316,34 +314,53 @@ private struct NeuPackCard: View {
 
 private struct NeuAddCard: View {
     @Environment(\.colorScheme) private var colorScheme
+    var compact: Bool = false
     let action: () -> Void
 
     private let shape = RoundedRectangle(cornerRadius: neuCorner, style: .continuous)
 
     var body: some View {
         Button(action: action) {
-            cardBody
-                .aspectRatio(2.0 / 1.0, contentMode: .fit)
+            if compact {
+                compactBody.frame(height: 70)
+            } else {
+                cardBody.aspectRatio(3.0 / 2.0, contentMode: .fit)
+            }
         }
         .buttonStyle(.plain)
     }
 
+    private var compactBody: some View {
+        ZStack {
+            NeuRaised(shape: shape)
+
+            VStack(spacing: 4) {
+                ZStack {
+                    NeuRaised(shape: Circle(), radius: 4, distance: 4)
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                }
+                Text("New Pack")
+                    .font(.system(.caption2, design: .rounded).weight(.medium))
+                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+            }
+        }
+    }
+
     private var cardBody: some View {
         ZStack {
-            // Simple raised card (no pocket -- it's a CTA, not a pack)
             NeuRaised(shape: shape)
 
             VStack(spacing: 12) {
-                // Raised circular plus button
                 ZStack {
                     NeuRaised(shape: Circle(), radius: 5, distance: 5)
                         .frame(width: 48, height: 48)
-
                     Image(systemName: "plus")
                         .font(.system(size: 18, weight: .medium, design: .rounded))
                         .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
                 }
-
                 Text("New Pack")
                     .font(.system(.caption, design: .rounded).weight(.medium))
                     .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))

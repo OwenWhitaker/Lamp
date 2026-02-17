@@ -217,7 +217,7 @@ private struct NeuInset<S: Shape>: View {
                 .offset(x: 2, y: 2)
                 .mask(shape.fill(LinearGradient(Color.black, Color.clear)))
             shape
-                .stroke(Color.white.opacity(colorScheme == .dark ? 0.12 : 1.0), lineWidth: 6)
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.5), lineWidth: 6)
                 .blur(radius: 4)
                 .offset(x: -2, y: -2)
                 .mask(shape.fill(LinearGradient(Color.clear, Color.black)))
@@ -294,7 +294,7 @@ struct PackDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showAddVerse) {
-            AddVerseView(pack: pack, isPresented: $showAddVerse)
+            NeuAddVerseSheet(pack: pack, isPresented: $showAddVerse)
         }
         .sheet(isPresented: $showEditVerse) {
             if let verse = pendingVerseEdit {
@@ -311,8 +311,9 @@ struct PackDetailView: View {
         } message: {
             Text("Are you sure you want to delete \"\(pack.title)\"? All verses will be removed.")
         }
-        .fullScreenCover(isPresented: $showMemorization) {
-            FlashcardView(pack: pack, verses: pack.verses.sorted { $0.order < $1.order })
+        .navigationDestination(isPresented: $showMemorization) {
+            MemorizationView(verses: pack.verses.sorted { $0.order < $1.order }, pack: pack)
+                .toolbar(.hidden, for: .navigationBar)
         }
         .confirmationDialog("Delete Verse", isPresented: Binding(
             get: { pendingVerseDelete != nil },
@@ -691,6 +692,128 @@ struct CircularProgressView: View {
                 .stroke(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
+    }
+}
+
+// MARK: - Neumorphic Add Verse Sheet
+
+private struct NeuAddVerseSheet: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var pack: Pack
+    @Binding var isPresented: Bool
+    @State private var reference = ""
+    @State private var text = ""
+    @FocusState private var focusedField: Field?
+
+    private enum Field { case reference, text }
+
+    private var canSave: Bool {
+        !reference.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !text.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        ZStack {
+            Color.neuBg.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    NeuCircleButton(icon: "xmark") {
+                        isPresented = false
+                    }
+
+                    Spacer()
+
+                    Text("Add Verse")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+
+                    Spacer()
+
+                    // Save button
+                    Button {
+                        save()
+                    } label: {
+                        ZStack {
+                            NeuRaised(shape: Capsule(), radius: 6, distance: 5)
+                            Text("Save")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(canSave
+                                    ? (colorScheme == .dark ? Color.white.opacity(0.7) : Color.black.opacity(0.6))
+                                    : (colorScheme == .dark ? Color.white.opacity(0.2) : Color.black.opacity(0.2))
+                                )
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                        }
+                        .fixedSize()
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSave)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // Reference field
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Reference")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+
+                            ZStack {
+                                NeuInset(shape: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                TextField("e.g. John 3:16", text: $reference)
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .focused($focusedField, equals: .reference)
+                            }
+                        }
+
+                        // Verse text field
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Verse Text")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+
+                            ZStack(alignment: .topLeading) {
+                                NeuInset(shape: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                TextField("Enter the verse text...", text: $text, axis: .vertical)
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+                                    .lineLimit(5...15)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                                    .focused($focusedField, equals: .text)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .onAppear { focusedField = .reference }
+    }
+
+    private func save() {
+        let order = pack.verses.count
+        let verse = Verse(
+            reference: reference.trimmingCharacters(in: .whitespaces),
+            text: text.trimmingCharacters(in: .whitespaces),
+            order: order
+        )
+        verse.pack = pack
+        modelContext.insert(verse)
+        try? modelContext.save()
+        isPresented = false
     }
 }
 
