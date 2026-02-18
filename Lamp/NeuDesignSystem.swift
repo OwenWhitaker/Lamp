@@ -32,7 +32,7 @@ struct NeuRaised<S: Shape>: View {
         shape
             .fill(Color.neuBg)
             .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.3), radius: radius, x: distance, y: distance)
-            .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 1.0), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
+            .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.04 : 1.0), radius: radius, x: -distance * 0.5, y: -distance * 0.5)
     }
 }
 

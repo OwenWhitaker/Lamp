@@ -40,9 +40,6 @@ struct ContentView: View {
                         .toolbar(.hidden, for: .navigationBar)
                         .navigationDestination(for: Pack.self) { pack in
                             PackDetailView(pack: pack, path: $path)
-                                .navigationDestination(for: Verse.self) { verse in
-                                    VerseView(verse: verse)
-                                }
                         }
                         .sheet(isPresented: $showAddPack) {
                             AddPackView(isPresented: $showAddPack)

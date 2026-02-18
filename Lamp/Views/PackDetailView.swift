@@ -1,144 +1,80 @@
 import SwiftUI
 import SwiftData
 
-private struct SwipeableVerseRow: View {
+// MARK: - Tappable Card (tap to flip)
+
+private struct TappableCard: View {
     let verse: Verse
-    @Binding var openSwipeVerseId: UUID?
-    let onTap: () -> Void
-    let onEdit: () -> Void
-    let onDelete: () -> Void
+    @Binding var isFlipped: Bool
+    var showBackReference: Bool = true
 
-    @State private var offsetX: CGFloat = 0
-    @GestureState private var dragX: CGFloat = 0
-    @State private var isHorizontalDrag: Bool?
-
-    private let actionSize: CGFloat = 48
-    private let actionGap: CGFloat = 10
-    private var maxReveal: CGFloat { actionSize * 2 + actionGap + 24 }
-    private var effectiveOffset: CGFloat { rubberBand(offsetX + dragX) }
-    private var settleSpring: Animation {
-        .interpolatingSpring(stiffness: 260, damping: 22)
+    var body: some View {
+        NeuFlippableCard(verse: verse, isFlipped: isFlipped, showBackReference: showBackReference)
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.15)) { isFlipped.toggle() }
+            }
     }
+}
 
-    @State private var didSwipe = false
+// MARK: - Flippable Card (3:2 aspect, tap to flip)
+
+private struct NeuFlippableCard: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let verse: Verse
+    var isFlipped: Bool
+    var showBackReference: Bool = true
 
     var body: some View {
         ZStack {
-            actionRow
-            NeuVerseCard(verse: verse)
-                .offset(x: effectiveOffset)
-                .onTapGesture {
-                    guard !didSwipe else {
-                        didSwipe = false
-                        return
-                    }
-                    if offsetX != 0 {
-                        // Close open swipe instead of navigating
-                        withAnimation(settleSpring) { offsetX = 0 }
-                        openSwipeVerseId = nil
-                    } else {
-                        onTap()
-                    }
-                }
-                .simultaneousGesture(dragGesture)
-        }
-        .onChange(of: openSwipeVerseId) {
-            if openSwipeVerseId != verse.id, offsetX != 0 {
-                withAnimation(settleSpring) {
-                    offsetX = 0
-                }
-            }
-        }
-    }
+            if isFlipped {
+                // Back face: verse text centered + optional reference at bottom
+                VStack(spacing: 0) {
+                    Spacer()
 
-    private var actionRow: some View {
-        HStack {
-            HStack(spacing: actionGap) {
-                Button(action: onDelete) {
-                    NeuSwipeActionCircle(icon: "trash", size: actionSize, iconColor: .red)
-                }
-                .buttonStyle(.plain)
+                    Text("     \(verse.text)")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                Button(action: onEdit) {
-                    NeuSwipeActionCircle(icon: "square.and.pencil", size: actionSize)
-                }
-                .buttonStyle(.plain)
-            }
+                    Spacer()
 
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-    }
-
-    /// Horizontal dead zone before swipe engages — gives ScrollView priority
-    private let swipeDeadZone: CGFloat = 5
-
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 24, coordinateSpace: .local)
-            .updating($dragX) { value, state, _ in
-                guard isHorizontalDrag == true else { return }
-                // Subtract dead zone so the card doesn't jump
-                let adjusted = value.translation.width - (value.translation.width > 0 ? swipeDeadZone : -swipeDeadZone)
-                state = adjusted
-            }
-            .onChanged { value in
-                // Lock direction once past the dead zone
-                if isHorizontalDrag == nil,
-                   abs(value.translation.width) > swipeDeadZone {
-                    isHorizontalDrag = abs(value.translation.width) > abs(value.translation.height) * 1.8
-                }
-                guard isHorizontalDrag == true else { return }
-                if openSwipeVerseId != verse.id {
-                    openSwipeVerseId = verse.id
-                }
-            }
-            .onEnded { value in
-                defer { isHorizontalDrag = nil }
-                guard isHorizontalDrag == true else { return }
-                didSwipe = true
-                let raw = offsetX + value.translation.width
-                let current = clamped(raw)
-
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) {
-                    offsetX = raw
-                }
-
-                let shouldOpen = current > maxReveal * 0.35
-
-                if shouldOpen {
-                    withAnimation(settleSpring) {
-                        offsetX = maxReveal
-                    }
-                    openSwipeVerseId = verse.id
-                } else {
-                    withAnimation(settleSpring) {
-                        offsetX = 0
-                    }
-                    if openSwipeVerseId == verse.id {
-                        openSwipeVerseId = nil
+                    if showBackReference {
+                        Text(verse.reference)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
                     }
                 }
+            } else {
+                // Front face: reference centered
+                Text(verse.reference)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
             }
-    }
-
-    private func clamped(_ value: CGFloat) -> CGFloat {
-        min(max(value, 0), maxReveal)
-    }
-
-    private func rubberBand(_ value: CGFloat) -> CGFloat {
-        if value < 0 {
-            let d = abs(value)
-            return -18 * log1p(d / 18)
         }
-        if value > maxReveal {
-            let over = value - maxReveal
-            return maxReveal + 18 * log1p(over / 18)
-        }
-        return value
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(14)
+        .aspectRatio(3.0 / 2.0, contentMode: .fit)
+        .background(
+            ZStack {
+                NeuRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), Color.clear, Color.clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
+
+// MARK: - Edit Verse View
 
 struct EditVerseView: View {
     @Environment(\.modelContext) private var modelContext
@@ -174,7 +110,7 @@ struct EditVerseView: View {
 
 // MARK: - Shared Layout
 
-/// Shared card dimensions for verse cards. Used by PackDetailView and FlashcardView.
+/// Shared card dimensions for verse cards. Used by FlashcardView.
 enum VerseCardLayout {
     static let cardHeight: CGFloat = 160
     static let horizontalPadding: CGFloat = 12
@@ -195,7 +131,11 @@ struct PackDetailView: View {
     @State private var showEditVerse = false
     @State private var pendingVerseDelete: Verse?
     @State private var pendingVerseEdit: Verse?
-    @State private var openSwipeVerseId: UUID?
+    @State private var currentIndex: Int = 0
+    @State private var dragOffsetX: CGFloat = 0
+    @State private var isFlipped: Bool = false
+    @State private var showOptions: Bool = false
+    @State private var showBackReference: Bool = true
 
     private var sortedVerses: [Verse] {
         pack.verses.sorted { $0.order < $1.order }
@@ -207,22 +147,26 @@ struct PackDetailView: View {
         return withHealth.reduce(0, +) / Double(withHealth.count)
     }
 
+    /// Horizontal peek — how much of adjacent cards is visible at the edges
+    private let peekAmount: CGFloat = 24
+    private let cardSpacing: CGFloat = 14
+
+    private let pageAnimation: Animation = .easeOut(duration: 0.15)
+
     // MARK: Body
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Full-screen neuBg
             Color.neuBg.ignoresSafeArea()
 
-            // Main content: scroll view fills screen, header floats on top
-            verseList
+            // Card area fills the space between header and footer
+            verseContent
 
             // Floating header with gradient fade
             VStack(spacing: 0) {
                 neuHeader
                     .background(Color.neuBg)
 
-                // Soft gradient fade so cards blend under the header
                 LinearGradient(
                     colors: [Color.neuBg, Color.neuBg.opacity(0.85), Color.neuBg.opacity(0)],
                     startPoint: .top,
@@ -234,12 +178,19 @@ struct PackDetailView: View {
                 Spacer()
             }
 
-            // Floating footer
             neuFooter
         }
         .navigationTitle("My Packs")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showOptions) {
+            PackOptionsSheet(
+                isPresented: $showOptions,
+                showBackReference: $showBackReference,
+                onEditPack: { },
+                onDeletePack: { showDeleteConfirmation = true }
+            )
+        }
         .sheet(isPresented: $showAddVerse) {
             NeuAddVerseSheet(pack: pack, isPresented: $showAddVerse)
         }
@@ -282,14 +233,12 @@ struct PackDetailView: View {
 
     private var neuHeader: some View {
         HStack(spacing: 16) {
-            // Back button
             NeuCircleButton(icon: "chevron.left") {
                 dismiss()
             }
 
             Spacer()
 
-            // Pack title
             Text(pack.title)
                 .font(.system(size: 22, weight: .bold))
                 .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
@@ -298,9 +247,8 @@ struct PackDetailView: View {
 
             Spacer()
 
-            // Add verse button
-            NeuCircleButton(icon: "plus") {
-                showAddVerse = true
+            NeuCircleButton(icon: "ellipsis") {
+                showOptions = true
             }
         }
         .padding(.horizontal, 20)
@@ -308,50 +256,81 @@ struct PackDetailView: View {
         .padding(.bottom, 8)
     }
 
-    // MARK: - Verse List
+    // MARK: - Verse Content (horizontal paging carousel)
 
-    private var verseList: some View {
-        ScrollView(.vertical, showsIndicators: false) {
+    private var verseContent: some View {
+        Group {
             if sortedVerses.isEmpty {
                 emptyState
             } else {
-                LazyVStack(spacing: 16) {
-                    ForEach(sortedVerses) { verse in
-                        SwipeableVerseRow(
-                            verse: verse,
-                            openSwipeVerseId: $openSwipeVerseId,
-                            onTap: { path.append(verse) },
-                            onEdit: {
-                                pendingVerseEdit = verse
-                                showEditVerse = true
-                            },
-                            onDelete: {
-                                pendingVerseDelete = verse
-                            }
-                        )
+                let verses = sortedVerses
+                GeometryReader { geo in
+                    let totalHeight = geo.size.height
+                    let headerInset: CGFloat = 80
+                    let footerInset: CGFloat = 160
+                    let availableHeight = totalHeight - headerInset - footerInset
+
+                    // Card width = most of screen, leaving peek room at edges
+                    let cardW = geo.size.width - peekAmount * 2 - cardSpacing * 2
+                    // Height from 3:2 aspect, capped to available space
+                    let cardH = min(cardW / 1.5, availableHeight)
+                    let step = cardW + cardSpacing
+
+                    HStack(spacing: cardSpacing) {
+                        ForEach(Array(verses.enumerated()), id: \.element.id) { index, verse in
+                            TappableCard(verse: verse, isFlipped: $isFlipped, showBackReference: showBackReference)
+                                .frame(width: cardW, height: cardH)
+                        }
                     }
+                    .frame(maxHeight: .infinity)
+                    .offset(x: geo.size.width / 2 - cardW / 2 - CGFloat(currentIndex) * step + dragOffsetX)
+                    .padding(.top, headerInset)
+                    .padding(.bottom, footerInset)
+                    .gesture(
+                        DragGesture(minimumDistance: 20)
+                            .onChanged { value in
+                                dragOffsetX = value.translation.width
+                            }
+                            .onEnded { value in
+                                let predicted = value.predictedEndTranslation.width
+                                let threshold: CGFloat = step * 0.15
+                                var newIndex = currentIndex
+
+                                if predicted < -threshold {
+                                    newIndex = min(currentIndex + 1, verses.count - 1)
+                                } else if predicted > threshold {
+                                    newIndex = max(currentIndex - 1, 0)
+                                }
+
+                                withAnimation(pageAnimation) {
+                                    currentIndex = newIndex
+                                    dragOffsetX = 0
+                                }
+                            }
+                    )
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 80)
-                .padding(.bottom, 200)
+                .clipped()
             }
         }
     }
 
     private func deletePendingVerse() {
         guard let verse = pendingVerseDelete else { return }
+        let count = sortedVerses.count
         modelContext.delete(verse)
         try? modelContext.save()
         pendingVerseDelete = nil
+        if currentIndex >= count - 1 {
+            currentIndex = max(0, count - 2)
+        }
     }
 
     // MARK: Empty / No Results
 
     private var emptyState: some View {
         VStack(spacing: 20) {
-            Spacer().frame(height: 120) // clear the floating header
+            Spacer().frame(height: 120)
 
-            // Neumorphic inset circle icon
             ZStack {
                 NeuInset(shape: Circle())
                     .frame(width: 80, height: 80)
@@ -368,7 +347,6 @@ struct PackDetailView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.3) : Color.black.opacity(0.3))
 
-            // Add verse raised button
             Button {
                 showAddVerse = true
             } label: {
@@ -398,7 +376,6 @@ struct PackDetailView: View {
 
     private var neuFooter: some View {
         VStack(spacing: 0) {
-            // Gradient fade
             LinearGradient(
                 colors: [Color.neuBg.opacity(0), Color.neuBg.opacity(0.85), Color.neuBg],
                 startPoint: .top,
@@ -407,9 +384,7 @@ struct PackDetailView: View {
             .frame(height: 32)
             .allowsHitTesting(false)
 
-            // Footer content
             HStack(spacing: 16) {
-                // Stats
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(pack.verses.count) verse\(pack.verses.count == 1 ? "" : "s")")
                         .font(.system(size: 15, weight: .semibold))
@@ -427,7 +402,23 @@ struct PackDetailView: View {
 
                 Spacer()
 
-                // Review button
+                Button {
+                    showAddVerse = true
+                } label: {
+                    ZStack {
+                        NeuRaised(
+                            shape: RoundedRectangle(cornerRadius: 14, style: .continuous),
+                            radius: 8,
+                            distance: 6
+                        )
+                        Image(systemName: "plus")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.55) : Color.black.opacity(0.55))
+                    }
+                    .frame(width: 50, height: 50)
+                }
+                .buttonStyle(.plain)
+
                 Button {
                     showMemorization = true
                 } label: {
@@ -451,12 +442,14 @@ struct PackDetailView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 4)
-            .padding(.bottom, 120) // clear the tab bar
+            .padding(.bottom, 120)
             .background(Color.neuBg)
         }
         .ignoresSafeArea(edges: .bottom)
     }
 }
+
+// MARK: - Swipe Action Circle
 
 private struct NeuSwipeActionCircle: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -476,46 +469,6 @@ private struct NeuSwipeActionCircle: View {
     }
 }
 
-// MARK: - Neumorphic Verse Card
-
-private struct NeuVerseCard: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let verse: Verse
-
-    var body: some View {
-        HStack(spacing: 14) {
-            // Left: reference + text preview
-            VStack(alignment: .leading, spacing: 6) {
-                Text(verse.reference)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
-
-                Text(verse.text)
-                    .font(.system(size: 14))
-                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.4) : Color.black.opacity(0.4))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Right: memory health ring
-            if let health = verse.memoryHealth {
-                NeuProgressRing(progress: health, size: 36)
-            } else {
-                // Empty neumorphic inset circle
-                NeuInset(shape: Circle())
-                    .frame(width: 36, height: 36)
-            }
-        }
-        .padding(18)
-        .background(
-            NeuRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        )
-        .padding(.vertical, 8)
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
 // MARK: - Neumorphic Progress Ring
 
 private struct NeuProgressRing: View {
@@ -525,39 +478,32 @@ private struct NeuProgressRing: View {
 
     private var ringColor: Color {
         if progress >= 0.75 {
-            return Color(red: 0.55, green: 0.78, blue: 0.95) // light blue
+            return Color(red: 0.55, green: 0.78, blue: 0.95)
         }
-        // Lerp from red (0%) to yellow (75%)
         let t = max(0, progress / 0.75)
-        let r = 0.9 + (0.95 - 0.9) * t   // 0.9 → 0.95
-        let g = 0.3 + (0.8 - 0.3) * t     // 0.3 → 0.8
-        let b = 0.25 + (0.3 - 0.25) * t   // 0.25 → 0.3
+        let r = 0.9 + (0.95 - 0.9) * t
+        let g = 0.3 + (0.8 - 0.3) * t
+        let b = 0.25 + (0.3 - 0.25) * t
         return Color(red: r, green: g, blue: b)
     }
 
     private var grooveWidth: CGFloat { size > 24 ? 4 : 3 }
-    // The groove sits centered on this radius
     private var grooveRadius: CGFloat { (size - grooveWidth) / 2 }
 
     var body: some View {
         ZStack {
-            // 1. Raised disc — the whole circle is extruded from the card
             Circle()
                 .fill(Color.neuBg)
                 .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.2), radius: 3, x: 2, y: 2)
                 .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), radius: 3, x: -1, y: -1)
 
-            // 2. Groove channel — ring-shaped inset cut into the disc
-            // Outer border of the groove
             Circle()
                 .strokeBorder(Color.black.opacity(0.07), lineWidth: 0.5)
                 .frame(width: size - 1, height: size - 1)
 
-            // Groove floor — slightly darker than the disc surface
             Circle()
                 .stroke(Color.black.opacity(0.04), lineWidth: grooveWidth)
 
-            // Groove inset shadow — dark on top-left, light on bottom-right
             Circle()
                 .stroke(Color.black.opacity(0.12), lineWidth: grooveWidth)
                 .blur(radius: 0.5)
@@ -570,7 +516,6 @@ private struct NeuProgressRing: View {
                 .offset(x: 0.5, y: 0.5)
                 .mask(Circle().stroke(lineWidth: grooveWidth + 1))
 
-            // 3. Emissive glow behind the progress arc
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
@@ -580,7 +525,6 @@ private struct NeuProgressRing: View {
                 .blur(radius: 2)
                 .rotationEffect(.degrees(-90))
 
-            // 4. Progress arc — slightly raised from the groove floor
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
@@ -591,7 +535,6 @@ private struct NeuProgressRing: View {
                 .shadow(color: Color.white.opacity(0.4), radius: 0.5, x: -0.3, y: -0.3)
                 .rotationEffect(.degrees(-90))
 
-            // 5. Percentage label
             if size >= 36 {
                 Text("\(Int(progress * 100))")
                     .font(.system(size: size * 0.26, weight: .bold))
@@ -643,7 +586,6 @@ private struct NeuAddVerseSheet: View {
             Color.neuBg.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
                 HStack {
                     NeuCircleButton(icon: "xmark") {
                         isPresented = false
@@ -657,7 +599,6 @@ private struct NeuAddVerseSheet: View {
 
                     Spacer()
 
-                    // Save button
                     Button {
                         save()
                     } label: {
@@ -683,7 +624,6 @@ private struct NeuAddVerseSheet: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Reference field
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Reference")
                                 .font(.system(size: 13, weight: .semibold))
@@ -700,7 +640,6 @@ private struct NeuAddVerseSheet: View {
                             }
                         }
 
-                        // Verse text field
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Verse Text")
                                 .font(.system(size: 13, weight: .semibold))
@@ -739,6 +678,162 @@ private struct NeuAddVerseSheet: View {
         modelContext.insert(verse)
         try? modelContext.save()
         isPresented = false
+    }
+}
+
+// MARK: - Neumorphic Toggle
+
+private struct NeuToggle: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Binding var isOn: Bool
+
+    private let width: CGFloat = 56
+    private let height: CGFloat = 30
+    private let inset: CGFloat = 3
+
+    private var pillSize: CGFloat { height - inset * 2 }
+
+    var body: some View {
+        ZStack {
+            // Inset track
+            NeuInset(shape: Capsule())
+
+            // Green fill with emissive glow
+            ZStack {
+                Capsule()
+                    .fill(Color(red: 0.3, green: 0.78, blue: 0.4).opacity(isOn ? 0.4 : 0))
+                    .blur(radius: 6)
+                Capsule()
+                    .fill(Color(red: 0.3, green: 0.78, blue: 0.4).opacity(isOn ? (colorScheme == .dark ? 0.5 : 0.6) : 0))
+                    .padding(2)
+            }
+            .animation(.easeOut(duration: 0.15), value: isOn)
+
+            // Raised pill
+            Capsule()
+                .fill(Color.neuBg)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.5 : 0.18), radius: 3, x: 2, y: 2)
+                .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.07 : 0.6), radius: 3, x: -1, y: -1)
+                .frame(width: pillSize, height: pillSize)
+                .offset(x: isOn ? (width / 2 - pillSize / 2 - inset) : -(width / 2 - pillSize / 2 - inset))
+                .animation(.easeOut(duration: 0.15), value: isOn)
+        }
+        .frame(width: width, height: height)
+        .contentShape(Capsule())
+        .onTapGesture {
+            isOn.toggle()
+        }
+    }
+}
+
+// MARK: - Pack Options Sheet
+
+private struct PackOptionsSheet: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Binding var isPresented: Bool
+    @Binding var showBackReference: Bool
+    var onEditPack: () -> Void
+    var onDeletePack: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.neuBg.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    NeuCircleButton(icon: "xmark") {
+                        isPresented = false
+                    }
+                    Spacer()
+                    Text("Options")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+                    Spacer()
+                    // Invisible spacer to balance the X button
+                    Color.clear.frame(width: 44, height: 44)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 20)
+
+                VStack(spacing: 16) {
+                    // Show reference toggle
+                    ZStack {
+                        NeuRaised(shape: RoundedRectangle(cornerRadius: neuCorner, style: .continuous))
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Show Reference on Verse")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+                                Text("Display the reference below the verse text")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                            }
+                            Spacer()
+                            NeuToggle(isOn: $showBackReference)
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 14)
+                    }
+                    .frame(height: 64)
+
+                    // Edit pack button
+                    Button(action: {
+                        isPresented = false
+                        onEditPack()
+                    }) {
+                        ZStack {
+                            NeuRaised(shape: RoundedRectangle(cornerRadius: neuCorner, style: .continuous))
+                            HStack {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text("Edit Pack")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.25) : Color.black.opacity(0.25))
+                            }
+                            .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 14)
+                        }
+                        .frame(height: 52)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Delete pack button
+                    Button(action: {
+                        isPresented = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            onDeletePack()
+                        }
+                    }) {
+                        ZStack {
+                            NeuRaised(shape: RoundedRectangle(cornerRadius: neuCorner, style: .continuous))
+                            HStack {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Text("Delete Pack")
+                                    .font(.system(size: 15, weight: .semibold))
+                                Spacer()
+                            }
+                            .foregroundStyle(.red.opacity(0.7))
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 14)
+                        }
+                        .frame(height: 52)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 20)
+
+                Spacer()
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 }
 
