@@ -3,28 +3,24 @@ import SwiftUI
 // MARK: - Tab Definition
 
 private enum Tab: Int, CaseIterable, Hashable {
-    case packs = 0, search, settings
+    case home = 0, packs, settings
 
     var label: String {
         switch self {
+        case .home: "Home"
         case .packs: "My Packs"
-        case .search: "Search"
         case .settings: "Settings"
         }
     }
 
     var icon: String {
         switch self {
+        case .home: "house.fill"
         case .packs: "folder.fill"
-        case .search: "magnifyingglass"
         case .settings: "gearshape"
         }
     }
 }
-
-// MARK: - Neumorphic Tab Bar Color
-
-private let neuBg = Color(red: 225 / 255, green: 225 / 255, blue: 235 / 255)
 
 // MARK: - ContentView
 
@@ -44,9 +40,6 @@ struct ContentView: View {
                         .toolbar(.hidden, for: .navigationBar)
                         .navigationDestination(for: Pack.self) { pack in
                             PackDetailView(pack: pack, path: $path)
-                                .navigationDestination(for: Verse.self) { verse in
-                                    VerseView(verse: verse)
-                                }
                         }
                         .sheet(isPresented: $showAddPack) {
                             AddPackView(isPresented: $showAddPack)
@@ -55,32 +48,33 @@ struct ContentView: View {
                 .opacity(selectedTab == .packs ? 1 : 0)
 
                 NavigationStack {
-                    PlaceholderTabView(title: "Search")
+                    HomeView()
                 }
-                .opacity(selectedTab == .search ? 1 : 0)
+                .opacity(selectedTab == .home ? 1 : 0)
 
                 NavigationStack {
-                    PlaceholderTabView(title: "Settings")
+                    SettingsView()
                 }
                 .opacity(selectedTab == .settings ? 1 : 0)
             }
 
             // Floating tab bar with gradient fade
             VStack(spacing: 0) {
-                // Soft gradient fade from transparent to neuBg
+                // Soft gradient fade from transparent to neuBg (hidden on packs tab — it has its own footer gradient)
                 LinearGradient(
-                    colors: [neuBg.opacity(0), neuBg.opacity(0.8), neuBg],
+                    colors: [Color.neuBg.opacity(0), Color.neuBg.opacity(0.8), Color.neuBg],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(height: 28)
+                .opacity(selectedTab == .packs ? 0 : 1)
 
                 // Tab bar on solid background
                 NeuTabBar(selected: $selectedTab)
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 4)
-                    .background(neuBg)
+                    .background(Color.neuBg)
             }
             .ignoresSafeArea(edges: .bottom)
         }
@@ -90,6 +84,7 @@ struct ContentView: View {
 // MARK: - Neumorphic Tab Bar
 
 private struct NeuTabBar: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var selected: Tab
     @State private var dragX: CGFloat? = nil   // nil = use selected tab's rest position
     @State private var isDragging = false
@@ -123,9 +118,9 @@ private struct NeuTabBar: View {
 
                 // 2. Neumorphic pill – raised from the track floor
                 Capsule()
-                    .fill(neuBg)
-                    .shadow(color: Color.black.opacity(0.18), radius: 5, x: 4, y: 4)
-                    .shadow(color: Color.white.opacity(0.6), radius: 5, x: -3, y: -3)
+                    .fill(Color.neuBg)
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.5 : 0.18), radius: 5, x: 4, y: 4)
+                    .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.07 : 0.6), radius: 5, x: -3, y: -3)
                     .frame(width: selectorW, height: selectorH)
                     .position(x: pillX, y: h / 2)
 
@@ -140,8 +135,8 @@ private struct NeuTabBar: View {
                         }
                         .foregroundStyle(
                             selected == tab
-                                ? Color.black.opacity(0.6)
-                                : Color.black.opacity(0.28)
+                                ? (colorScheme == .dark ? Color.white.opacity(0.7) : Color.black.opacity(0.6))
+                                : (colorScheme == .dark ? Color.white.opacity(0.3) : Color.black.opacity(0.28))
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
@@ -228,11 +223,11 @@ private struct NeuTabBar: View {
     private var trackBody: some View {
         ZStack {
             // Base fill – same as background
-            Capsule().fill(neuBg)
+            Capsule().fill(Color.neuBg)
 
             // Inner shadow – dark along full top edge
             Capsule()
-                .stroke(Color.gray.opacity(0.7), lineWidth: 7)
+                .stroke(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(colorScheme == .dark ? 0.6 : 0.7), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(y: 4)
                 .mask(Capsule().fill(
@@ -241,7 +236,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – dark along full left edge
             Capsule()
-                .stroke(Color.gray.opacity(0.7), lineWidth: 7)
+                .stroke(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(colorScheme == .dark ? 0.6 : 0.7), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(x: 4)
                 .mask(Capsule().fill(
@@ -250,7 +245,7 @@ private struct NeuTabBar: View {
 
             // Inner shadow – light along full bottom edge
             Capsule()
-                .stroke(Color.white.opacity(0.9), lineWidth: 7)
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.1 : 0.9), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(y: -3)
                 .mask(Capsule().fill(
@@ -259,42 +254,13 @@ private struct NeuTabBar: View {
 
             // Inner shadow – light along full right edge
             Capsule()
-                .stroke(Color.white.opacity(0.9), lineWidth: 7)
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.1 : 0.9), lineWidth: 7)
                 .blur(radius: 5)
                 .offset(x: -3)
                 .mask(Capsule().fill(
                     LinearGradient(colors: [.black, .clear], startPoint: .trailing, endPoint: .center)
                 ))
         }
-    }
-}
-
-// MARK: - Placeholder
-
-struct PlaceholderTabView: View {
-    let title: String
-
-    var body: some View {
-        VStack(spacing: 16) {
-            Text(title)
-                .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(Color(white: 0.18))
-                .frame(maxWidth: .infinity)
-                .padding(.top, 20)
-
-            Spacer()
-
-            Text("Coming soon")
-                .font(.title2)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(neuBg)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)
     }
 }
 

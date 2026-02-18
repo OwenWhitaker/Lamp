@@ -18,11 +18,20 @@ Reference: [Hacking with Swift — How to build neumorphic designs with SwiftUI]
 
 ## Background Color
 
-```swift
-Color(red: 225/255, green: 225/255, blue: 235/255)  // neuBg
-```
+`neuBg` is a dynamic `UIColor` that adapts to the system appearance:
 
-This is dark enough that `Color.white` shadows glow visibly, but light enough that `Color.black` shadows read as depth rather than darkness.
+| Mode | RGB | Description |
+|------|-----|-------------|
+| **Light** | `(225, 225, 235)` | Cool off-white — the original neumorphic palette |
+| **Dark** | `(40, 40, 50)` | Deep charcoal with a slight cool tint |
+
+```swift
+private let neuBg = Color(UIColor { tc in
+    tc.userInterfaceStyle == .dark
+        ? UIColor(red: 40/255, green: 40/255, blue: 50/255, alpha: 1)
+        : UIColor(red: 225/255, green: 225/255, blue: 235/255, alpha: 1)
+})
+```
 
 ---
 
@@ -37,10 +46,12 @@ Used for: cards, buttons, the tab bar pill selector.
 ### Standard formula (NeuRaised)
 
 ```swift
+@Environment(\.colorScheme) private var colorScheme
+
 shape
     .fill(neuBg)
-    .shadow(color: Color.black.opacity(0.2), radius: R, x: D, y: D)
-    .shadow(color: Color.white.opacity(0.7), radius: R, x: -D * 0.5, y: -D * 0.5)
+    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.2), radius: R, x: D, y: D)
+    .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), radius: R, x: -D * 0.5, y: -D * 0.5)
 ```
 
 Where:
@@ -50,12 +61,12 @@ Where:
 
 ### Recommended values by element size
 
-| Element | R | D | Dark opacity | White opacity |
-|---------|---|---|-------------|---------------|
-| Large card (300pt) | 10 | 10 | 0.2 | 0.7 |
-| Medium card (pack card) | 10 | 10 | 0.2 | 0.7 |
-| Small element (pill in track) | 5 | 4 | 0.18 | 0.6 |
-| Tiny element (circle button) | 6 | 5 | 0.2 | 0.7 |
+| Element | R | D | Dark: black | Dark: white | Light: black | Light: white |
+|---------|---|---|------------|------------|-------------|-------------|
+| Large card (300pt) | 10 | 10 | 0.4 | 0.08 | 0.2 | 0.7 |
+| Medium card (pack card) | 10 | 10 | 0.4 | 0.08 | 0.2 | 0.7 |
+| Small element (pill in track) | 5 | 4 | 0.5 | 0.07 | 0.18 | 0.6 |
+| Tiny element (circle button) | 6 | 5 | 0.4 | 0.08 | 0.2 | 0.7 |
 
 ### Key mistakes to avoid
 
@@ -81,7 +92,7 @@ ZStack {
 
     // Dark inner shadow (top-left crease)
     shape
-        .stroke(Color.gray.opacity(0.5), lineWidth: 4)
+        .stroke(Color.black.opacity(0.5), lineWidth: 4)
         .blur(radius: 4)
         .offset(x: 2, y: 2)
         .mask(shape.fill(
@@ -90,7 +101,7 @@ ZStack {
 
     // Light inner shadow (bottom-right highlight)
     shape
-        .stroke(Color.white, lineWidth: 6)
+        .stroke(Color.white.opacity(0.12), lineWidth: 6)
         .blur(radius: 4)
         .offset(x: -2, y: -2)
         .mask(shape.fill(
@@ -110,28 +121,28 @@ ZStack {
     shape.fill(neuBg)
 
     // Dark – full top edge
-    shape.stroke(Color.gray.opacity(0.7), lineWidth: 7)
+    shape.stroke(Color.black.opacity(0.6), lineWidth: 7)
         .blur(radius: 5).offset(y: 4)
         .mask(shape.fill(
             LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .center)
         ))
 
     // Dark – full left edge
-    shape.stroke(Color.gray.opacity(0.7), lineWidth: 7)
+    shape.stroke(Color.black.opacity(0.6), lineWidth: 7)
         .blur(radius: 5).offset(x: 4)
         .mask(shape.fill(
             LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .center)
         ))
 
     // Light – full bottom edge
-    shape.stroke(Color.white.opacity(0.9), lineWidth: 7)
+    shape.stroke(Color.white.opacity(0.1), lineWidth: 7)
         .blur(radius: 5).offset(y: -3)
         .mask(shape.fill(
             LinearGradient(colors: [.black, .clear], startPoint: .bottom, endPoint: .center)
         ))
 
     // Light – full right edge
-    shape.stroke(Color.white.opacity(0.9), lineWidth: 7)
+    shape.stroke(Color.white.opacity(0.1), lineWidth: 7)
         .blur(radius: 5).offset(x: -3)
         .mask(shape.fill(
             LinearGradient(colors: [.black, .clear], startPoint: .trailing, endPoint: .center)
@@ -141,11 +152,21 @@ ZStack {
 
 ### Key parameters for inset depth
 
-| Depth feel | lineWidth | blur | offset | dark opacity | light opacity |
-|-----------|-----------|------|--------|-------------|---------------|
-| Subtle | 4 | 4 | 2 | 0.5 | 0.8 |
-| Medium | 5–6 | 4–5 | 3 | 0.55–0.6 | 0.85 |
-| Deep | 7 | 5 | 4 | 0.7 | 0.9 |
+**Dark mode:**
+
+| Depth feel | lineWidth | blur | offset | dark stroke | light stroke |
+|-----------|-----------|------|--------|------------|-------------|
+| Subtle | 4 | 4 | 2 | `black @ 0.5` | `white @ 0.12` |
+| Medium | 5–6 | 4–5 | 3 | `black @ 0.55–0.6` | `white @ 0.1` |
+| Deep | 7 | 5 | 4 | `black @ 0.6` | `white @ 0.1` |
+
+**Light mode:**
+
+| Depth feel | lineWidth | blur | offset | dark stroke | light stroke |
+|-----------|-----------|------|--------|------------|-------------|
+| Subtle | 4 | 4 | 2 | `gray @ 0.5` | `white @ 1.0` |
+| Medium | 5–6 | 4–5 | 3 | `gray @ 0.55–0.6` | `white @ 0.9` |
+| Deep | 7 | 5 | 4 | `gray @ 0.7` | `white @ 0.9` |
 
 ### Key mistakes to avoid
 
@@ -179,14 +200,25 @@ let pillHeight = trackHeight - inset * 2
 
 ## Shadow Color Rules
 
-| Shadow type | Color | Typical opacity |
-|------------|-------|----------------|
-| Dark outer (raised) | `Color.black` | 0.15–0.2 |
-| Light outer (raised) | `Color.white` | 0.6–0.7 |
-| Dark inner (inset) | `Color.gray` | 0.5–0.7 |
-| Light inner (inset) | `Color.white` | 0.8–0.9 |
+| Shadow type | Dark mode | Light mode |
+|------------|-----------|------------|
+| Dark outer (raised) | `black @ 0.4` | `black @ 0.2` |
+| Light outer (raised) | `white @ 0.07–0.08` | `white @ 0.7` |
+| Dark inner (inset) | `black @ 0.5–0.6` | `gray @ 0.5–0.7` |
+| Light inner (inset) | `white @ 0.1–0.12` | `white @ 0.9–1.0` |
 
 **Never use colored shadows.** The neumorphic system is monochromatic — all shadows are grayscale.
+
+## Text Color Rules
+
+| Role | Dark mode | Light mode |
+|------|-----------|------------|
+| Primary text | `Color(white: 0.88)` | `Color(white: 0.18)` |
+| Secondary text | `white @ 0.55` | `black @ 0.55` |
+| Tertiary text | `white @ 0.35` | `black @ 0.35` |
+| Icon color | `white @ 0.5` | `black @ 0.45` |
+| Tab active | `white @ 0.7` | `black @ 0.6` |
+| Tab inactive | `white @ 0.3` | `black @ 0.28` |
 
 ---
 

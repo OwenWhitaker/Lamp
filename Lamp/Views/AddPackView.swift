@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct AddPackView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @Binding var isPresented: Bool
     @State private var title = ""
@@ -26,11 +27,9 @@ struct AddPackView: View {
                     .padding()
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.secondarySystemBackground))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .strokeBorder(Color(.separator), lineWidth: 1)
-                            )
+                            .fill(Color.neuBg)
+                            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.2), radius: 4, x: 2, y: 2)
+                            .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), radius: 4, x: -1, y: -1)
                     )
 
                 Button {
@@ -45,14 +44,17 @@ struct AddPackView: View {
                     .frame(maxWidth: .infinity, minHeight: 100)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(canCreate ? Color.accentColor : Color(.tertiarySystemFill))
+                            .fill(canCreate ? Color.accentColor : Color.neuBg)
+                            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.2), radius: 6, x: 4, y: 4)
+                            .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), radius: 6, x: -2, y: -2)
                     )
-                    .foregroundStyle(canCreate ? .white : .secondary)
+                    .foregroundStyle(canCreate ? .white : (colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35)))
                 }
                 .buttonStyle(.plain)
                 .disabled(!canCreate)
             }
             .padding()
+            .background(Color.neuBg.ignoresSafeArea())
             .navigationTitle("My Packs")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
