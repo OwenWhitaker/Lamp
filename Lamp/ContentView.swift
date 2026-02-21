@@ -26,8 +26,9 @@ private enum Tab: Int, CaseIterable, Hashable {
 
 struct ContentView: View {
     @State private var path = NavigationPath()
+    @State private var homePath = NavigationPath()
     @State private var showAddPack = false
-    @State private var selectedTab: Tab = .packs
+    @State private var selectedTab: Tab = .home
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -47,8 +48,8 @@ struct ContentView: View {
                 }
                 .opacity(selectedTab == .packs ? 1 : 0)
 
-                NavigationStack {
-                    HomeView()
+                NavigationStack(path: $homePath) {
+                    HomeView(path: $homePath)
                 }
                 .opacity(selectedTab == .home ? 1 : 0)
 
@@ -70,7 +71,15 @@ struct ContentView: View {
                 .opacity(selectedTab == .packs ? 0 : 1)
 
                 // Tab bar on solid background
-                NeuTabBar(selected: $selectedTab)
+                NeuTabBar(selected: $selectedTab) { tab in
+                    withAnimation {
+                        switch tab {
+                        case .packs: path = NavigationPath()
+                        case .home: homePath = NavigationPath()
+                        case .settings: break
+                        }
+                    }
+                }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 4)
@@ -86,6 +95,7 @@ struct ContentView: View {
 private struct NeuTabBar: View {
     @Environment(\.colorScheme) private var colorScheme
     @Binding var selected: Tab
+    var onReselect: ((Tab) -> Void)? = nil
     @State private var dragX: CGFloat? = nil   // nil = use selected tab's rest position
     @State private var isDragging = false
     @State private var holdTriggered = false    // true once a held-tap fires
@@ -176,6 +186,7 @@ private struct NeuTabBar: View {
                                         holdTriggered = true
                                         let index = min(max(Int(loc / tabWidth), 0), Tab.allCases.count - 1)
                                         let newTab = Tab.allCases[index]
+                                        if newTab == selected { onReselect?(newTab) }
                                         withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
                                             selected = newTab
                                             dragX = nil
@@ -198,6 +209,7 @@ private struct NeuTabBar: View {
                                     dragX = nil
                                 } else if moved <= dragThreshold {
                                     // Quick tap — animate pill to tapped tab
+                                    if finalTab == selected { onReselect?(finalTab) }
                                     withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
                                         selected = finalTab
                                         dragX = nil
