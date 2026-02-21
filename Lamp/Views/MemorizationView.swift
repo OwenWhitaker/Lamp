@@ -224,7 +224,7 @@ struct MemorizationView: View {
                 VStack(spacing: 16) {
                     Spacer()
 
-                    (Text("     ") + Text(verse.text))
+                    Text("     \(verse.text)")
                         .font(.system(size: 16))
                         .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
                         .multilineTextAlignment(.leading)

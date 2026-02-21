@@ -114,8 +114,8 @@ private struct NeuTabBar: View {
             let tabCount = CGFloat(Tab.allCases.count)
             let tabWidth = w / tabCount
             let inset: CGFloat = 8       // uniform gap between track and pill
-            let selectorW = tabWidth - inset * 2
-            let selectorH = h - inset * 2
+            let selectorW = max(0, tabWidth - inset * 2)
+            let selectorH = max(0, h - inset * 2)
 
             // Rest position = center of the selected tab
             let restX = tabWidth * CGFloat(selected.rawValue) + tabWidth / 2

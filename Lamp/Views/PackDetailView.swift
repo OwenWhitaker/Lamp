@@ -124,6 +124,7 @@ struct PackDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Bindable var pack: Pack
     @Binding var path: NavigationPath
+    let initialVerseID: UUID?
 
     @State private var showDeleteConfirmation = false
     @State private var showMemorization = false
@@ -136,6 +137,7 @@ struct PackDetailView: View {
     @State private var isFlipped: Bool = false
     @State private var showOptions: Bool = false
     @State private var showBackReference: Bool = true
+    @State private var didApplyInitialVerseFocus = false
 
     private var sortedVerses: [Verse] {
         pack.verses.sorted { $0.order < $1.order }
@@ -152,6 +154,12 @@ struct PackDetailView: View {
     private let cardSpacing: CGFloat = 14
 
     private let pageAnimation: Animation = .easeOut(duration: 0.15)
+
+    init(pack: Pack, path: Binding<NavigationPath>, initialVerseID: UUID? = nil) {
+        self.pack = pack
+        self._path = path
+        self.initialVerseID = initialVerseID
+    }
 
     // MARK: Body
 
@@ -226,6 +234,10 @@ struct PackDetailView: View {
         } message: {
             let ref = pendingVerseDelete?.reference ?? "this verse"
             Text("Are you sure you want to delete \"\(ref)\"?")
+        }
+        .onAppear {
+            markPackAccess()
+            applyInitialVerseFocusIfNeeded()
         }
     }
 
@@ -323,6 +335,22 @@ struct PackDetailView: View {
         if currentIndex >= count - 1 {
             currentIndex = max(0, count - 2)
         }
+    }
+
+    private func markPackAccess() {
+        pack.lastAccessedAt = Date()
+        try? modelContext.save()
+    }
+
+    private func applyInitialVerseFocusIfNeeded() {
+        guard !didApplyInitialVerseFocus, let initialVerseID else { return }
+        let verses = sortedVerses
+        guard let index = verses.firstIndex(where: { $0.id == initialVerseID }) else {
+            didApplyInitialVerseFocus = true
+            return
+        }
+        currentIndex = index
+        didApplyInitialVerseFocus = true
     }
 
     // MARK: Empty / No Results
@@ -499,7 +527,7 @@ private struct NeuProgressRing: View {
 
             Circle()
                 .strokeBorder(Color.black.opacity(0.07), lineWidth: 0.5)
-                .frame(width: size - 1, height: size - 1)
+                .frame(width: max(0, size - 1), height: max(0, size - 1))
 
             Circle()
                 .stroke(Color.black.opacity(0.04), lineWidth: grooveWidth)

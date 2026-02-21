@@ -28,11 +28,17 @@ enum HomeDestination: Hashable {
     case attention
 }
 
+private struct PackFocusRoute: Hashable {
+    let pack: Pack
+    let verseID: UUID
+}
+
 struct HomeView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Query private var packs: [Pack]
     @Query private var verses: [Verse]
     @Binding var path: NavigationPath
+    @State private var showMemoryHealthInfo = false
 
     private var totalPacks: Int { packs.count }
     private var totalVerses: Int { verses.count }
@@ -104,61 +110,76 @@ struct HomeView: View {
     // MARK: Body
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 20) {
+        GeometryReader { geo in
+            let bottomClearance = max(170, geo.safeAreaInsets.bottom + 130)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
 
-                // Title
-                Text("Home")
-                    .font(.system(size: 30, weight: .bold))
-                    .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+                    // Title
+                    Text("Home")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 20)
+
+                    Spacer(minLength: max(10, geo.size.height * 0.02))
+
+                    // Stats row
+                    HStack(spacing: 12) {
+                        statChip(value: "\(totalPacks)", label: "Packs")
+                        statChip(value: "\(totalVerses)", label: "Verses")
+                        statChip(value: "\(currentStreak) day", label: "Streak")
+                    }
+                    .padding(.horizontal, 20)
+
+                    Spacer(minLength: max(18, geo.size.height * 0.045))
+
+                    // AMH ring + label
+                    VStack(spacing: 6) {
+                        HomeAMHRing(progress: overallHealth)
+                            .padding(.vertical, 16)
+
+                        HStack(spacing: 4) {
+                            Text("% Average memory health")
+                                .font(.system(.subheadline, design: .rounded).weight(.medium))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.5))
+                            Button {
+                                showMemoryHealthInfo = true
+                            } label: {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 20)
+                    .padding(.vertical, 4)
 
-                // Stats row
-                HStack(spacing: 12) {
-                    statChip(value: "\(totalPacks)", label: "Packs")
-                    statChip(value: "\(totalVerses)", label: "Verses")
-                    statChip(value: "\(currentStreak) day", label: "Streak")
-                }
-                .padding(.horizontal, 20)
+                    Spacer(minLength: max(18, geo.size.height * 0.055))
 
-                // AMH ring + label
-                VStack(spacing: 6) {
-                    HomeAMHRing(progress: overallHealth)
-                        .padding(.vertical, 16)
+                    // Bottom cards row
+                    HStack(alignment: .top, spacing: 14) {
+                        Button { path.append(HomeDestination.heatmap) } label: {
+                            HeatmapCard(
+                                heatmapDays: heatmapDays,
+                                reviewCountByDay: reviewCountByDay,
+                                totalVerses: verses.count,
+                                reviewsThisWeek: reviewsThisWeek
+                            )
+                        }
+                        .buttonStyle(.plain)
 
-                    HStack(spacing: 4) {
-                        Text("% Average memory health")
-                            .font(.system(.subheadline, design: .rounded).weight(.medium))
-                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.5))
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 13))
-                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                        Button { path.append(HomeDestination.attention) } label: {
+                            NeedsAttentionCard(verses: weakestVerses)
+                        }
+                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 20)
+
+                    Spacer(minLength: bottomClearance)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
-
-                // Bottom cards row
-                HStack(alignment: .top, spacing: 14) {
-                    Button { path.append(HomeDestination.heatmap) } label: {
-                        HeatmapCard(
-                            heatmapDays: heatmapDays,
-                            reviewCountByDay: reviewCountByDay,
-                            totalVerses: verses.count,
-                            reviewsThisWeek: reviewsThisWeek
-                        )
-                    }
-                    .buttonStyle(.plain)
-
-                    Button { path.append(HomeDestination.attention) } label: {
-                        NeedsAttentionCard(verses: weakestVerses)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 20)
-
-                Spacer().frame(height: 100)
+                .frame(minHeight: geo.size.height, alignment: .top)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -174,8 +195,14 @@ struct HomeView: View {
                     reviewsThisWeek: reviewsThisWeek
                 )
             case .attention:
-                AttentionDetailView(verses: weakestVerses)
+                AttentionDetailView(path: $path, verses: weakestVerses)
             }
+        }
+        .navigationDestination(for: PackFocusRoute.self) { route in
+            PackDetailView(pack: route.pack, path: $path, initialVerseID: route.verseID)
+        }
+        .sheet(isPresented: $showMemoryHealthInfo) {
+            MemoryHealthInfoSheet()
         }
     }
 
@@ -198,6 +225,81 @@ struct HomeView: View {
     }
 }
 
+private struct MemoryHealthInfoSheet: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            Color.neuBg.ignoresSafeArea()
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text("Average Memory Health")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+
+                        Spacer()
+
+                        NeuCircleButton(icon: "xmark", size: 36) { dismiss() }
+                    }
+
+                    ZStack(alignment: .topLeading) {
+                        NeuRaised(shape: RoundedRectangle(cornerRadius: neuCorner, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("How it's calculated")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+
+                            Text("1. Include every verse where memory health has a value.")
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.62) : Color.black.opacity(0.58))
+
+                            Text("2. Add those values and divide by the number of included verses.")
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.62) : Color.black.opacity(0.58))
+
+                            Text("3. Display as a percent: average × 100.")
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.62) : Color.black.opacity(0.58))
+
+                            ZStack(alignment: .leading) {
+                                NeuInset(shape: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Formula")
+                                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.42) : Color.black.opacity(0.38))
+
+                                    Text("average = sum(memoryHealth values) / count(values)")
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.58) : Color.black.opacity(0.54))
+                                    Text("displayed percent = Int(average * 100)")
+                                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.58) : Color.black.opacity(0.54))
+                                }
+                                .padding(12)
+                            }
+                            .frame(minHeight: 86)
+
+                            Text("If no verses have memory health yet, the displayed average is 0%.")
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.42) : Color.black.opacity(0.42))
+                                .padding(.top, 4)
+                        }
+                        .padding(16)
+                    }
+                }
+                .padding(20)
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 // MARK: - AMH Ring
 
 private struct HomeAMHRing: View {
@@ -206,6 +308,7 @@ private struct HomeAMHRing: View {
 
     private let ringDiameter: CGFloat = 190
     private let ringWidth: CGFloat = 24
+    private let scoreFontSize: CGFloat = 88
 
     private var ringColor: Color {
         if progress >= 0.75 {
@@ -217,6 +320,10 @@ private struct HomeAMHRing: View {
             green: 0.3 + 0.5 * t,
             blue: 0.25 + 0.05 * t
         )
+    }
+
+    private var scoreText: String {
+        "\(Int(progress * 100))"
     }
 
     var body: some View {
@@ -234,95 +341,83 @@ private struct HomeAMHRing: View {
                     radius: 5, x: -3, y: -3
                 )
 
-            // MARK: Progress arc (painted on top of ring)
-            // Outer glow
+            // MARK: Progress arc (emissive solid neumorphic material)
+            // Broad emissive bloom.
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
-                    ringColor.opacity(0.35),
-                    style: StrokeStyle(lineWidth: ringWidth + 6, lineCap: .round)
+                    (colorScheme == .dark ? ringColor : Color(red: 0.95, green: 0.56, blue: 0.22))
+                        .opacity(colorScheme == .dark ? 0.3 : 0.22),
+                    style: StrokeStyle(lineWidth: ringWidth + 10, lineCap: .round)
                 )
                 .frame(width: ringDiameter, height: ringDiameter)
-                .blur(radius: 6)
+                .blur(radius: colorScheme == .dark ? 8 : 7)
+                .blendMode(.screen)
                 .rotationEffect(.degrees(-90))
 
-            // Fillet layer — slightly wider and softened to blend into the ring
+            // Tight bloom near the core.
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
-                    ringColor.opacity(0.5),
-                    style: StrokeStyle(lineWidth: ringWidth + 2, lineCap: .round)
+                    (colorScheme == .dark ? ringColor : Color(red: 0.95, green: 0.56, blue: 0.22))
+                        .opacity(colorScheme == .dark ? 0.44 : 0.32),
+                    style: StrokeStyle(lineWidth: ringWidth + 4, lineCap: .round)
                 )
                 .frame(width: ringDiameter, height: ringDiameter)
-                .blur(radius: 3)
+                .blur(radius: colorScheme == .dark ? 4 : 3.4)
+                .blendMode(.screen)
                 .rotationEffect(.degrees(-90))
 
-            // Solid color arc with cylindrical shading
+            // Solid emissive core material.
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(
-                    LinearGradient(
-                        colors: [
-                            ringColor.opacity(0.7),
-                            ringColor,
-                            ringColor.opacity(0.7)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
+                    ringColor,
                     style: StrokeStyle(lineWidth: ringWidth - 4, lineCap: .round)
                 )
                 .frame(width: ringDiameter, height: ringDiameter)
-                .shadow(color: Color.black.opacity(0.2), radius: 2, x: 1, y: 1)
-                .shadow(color: Color.white.opacity(0.3), radius: 2, x: -0.5, y: -0.5)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.14 : 0.02), radius: 1.5, x: 0.8, y: 0.8)
+                .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.2 : 0.42), radius: 1.6, x: -0.5, y: -0.5)
                 .rotationEffect(.degrees(-90))
 
-            // MARK: Center text (NeuInset — simple diagonal, per NeuDesignGuide subtle)
+            // Specular top-left sheen.
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    (colorScheme == .dark ? Color.white : Color(red: 1.0, green: 0.78, blue: 0.55))
+                        .opacity(colorScheme == .dark ? 0.24 : 0.35),
+                    style: StrokeStyle(lineWidth: ringWidth - 11, lineCap: .round)
+                )
+                .frame(width: ringDiameter, height: ringDiameter)
+                .mask(
+                    Circle()
+                        .trim(from: 0, to: progress)
+                        .stroke(style: StrokeStyle(lineWidth: ringWidth - 7, lineCap: .round))
+                        .fill(LinearGradient(colors: [.black, .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
+                )
+                .blur(radius: 1)
+                .blendMode(.screen)
+                .rotationEffect(.degrees(-90))
+
+            // MARK: Center text (Embossed)
             ZStack {
-                // Base fill
-                Text("\(Int(progress * 100))")
-                    .font(.system(size: 88, weight: .heavy, design: .default))
+                // Dark rim on top-left.
+                Text(scoreText)
+                    .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
+                    .foregroundStyle(Color.black.opacity(colorScheme == .dark ? 0.6 : 0.32))
+                    .offset(x: -1.6, y: -1.6)
+                    .blur(radius: 0.9)
+
+                // Light rim on bottom-right.
+                Text(scoreText)
+                    .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
+                    .foregroundStyle(Color.white.opacity(colorScheme == .dark ? 0.26 : 0.95))
+                    .offset(x: 1.2, y: 1.2)
+
+                // Base glyph.
+                Text(scoreText)
+                    .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
                     .foregroundStyle(Color.neuBg)
-
-                // Dark inner shadow (top-left crease)
-                // Guide: gray @ 0.5 light / black @ 0.5 dark, lineWidth 4, blur 4, offset 2
-                Text("\(Int(progress * 100))")
-                    .font(.system(size: 88, weight: .heavy, design: .default))
-                    .foregroundStyle(Color.clear)
-                    .overlay(
-                        Text("\(Int(progress * 100))")
-                            .font(.system(size: 88, weight: .heavy, design: .default))
-                            .foregroundStyle(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(0.5))
-                            .blur(radius: 4)
-                            .offset(x: 2, y: 2)
-                            .mask(
-                                Text("\(Int(progress * 100))")
-                                    .font(.system(size: 88, weight: .heavy, design: .default))
-                                    .foregroundStyle(
-                                        LinearGradient(colors: [.black, .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                    )
-                            )
-                    )
-
-                // Light inner highlight (bottom-right)
-                // Guide: white @ 0.12 dark / white @ 1.0 light, lineWidth 6, blur 4, offset -2
-                Text("\(Int(progress * 100))")
-                    .font(.system(size: 88, weight: .heavy, design: .default))
-                    .foregroundStyle(Color.clear)
-                    .overlay(
-                        Text("\(Int(progress * 100))")
-                            .font(.system(size: 88, weight: .heavy, design: .default))
-                            .foregroundStyle(Color.white.opacity(colorScheme == .dark ? 0.12 : 1.0))
-                            .blur(radius: 4)
-                            .offset(x: -2, y: -2)
-                            .mask(
-                                Text("\(Int(progress * 100))")
-                                    .font(.system(size: 88, weight: .heavy, design: .default))
-                                    .foregroundStyle(
-                                        LinearGradient(colors: [.clear, .black], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                    )
-                            )
-                    )
             }
         }
         .frame(width: ringDiameter + ringWidth + 24, height: ringDiameter + ringWidth + 24)
@@ -330,6 +425,59 @@ private struct HomeAMHRing: View {
 }
 
 // MARK: - Heatmap Card
+
+private struct CandyHeatSquare: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let baseColor: Color
+    let level: Double
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        let t = min(1, max(0, level))
+        let innerCorner = max(0, cornerRadius - 0.6)
+
+        ZStack {
+            // Subtle emissive halo.
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(baseColor.opacity(colorScheme == .dark ? 0.2 : 0.12))
+                .blur(radius: 2.6)
+                .scaleEffect(1.08)
+
+            // Extruded body.
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            baseColor.opacity(0.78 + 0.14 * t),
+                            baseColor.opacity(0.92 + 0.08 * t)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            // Top-left face light.
+            RoundedRectangle(cornerRadius: innerCorner, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(colorScheme == .dark ? 0.2 : 0.34),
+                            .clear
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .padding(1)
+
+            // Crisp rim.
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.24), lineWidth: 0.6)
+        }
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.34 : 0.2), radius: 2.1, x: 1.5, y: 1.5)
+        .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.58), radius: 1.8, x: -1.0, y: -1.0)
+    }
+}
 
 private struct HeatmapCard: View {
     @Environment(\.colorScheme) private var colorScheme
@@ -392,11 +540,7 @@ private struct HeatmapCard: View {
                             let day = heatmapDays[dayIndex]
                             let level = intensity(for: day)
                             if level > 0 {
-                                // Raised blue square (NeuRaised: R=2, D=2)
-                                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                                    .fill(heatColor.opacity(level))
-                                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.2), radius: 2, x: 2, y: 2)
-                                    .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), radius: 2, x: -1, y: -1)
+                                CandyHeatSquare(baseColor: heatColor, level: level, cornerRadius: 2.5)
                                     .frame(width: cellSize, height: cellSize)
                             } else {
                                 // Inset empty pit (NeuInset: subtle)
@@ -543,10 +687,7 @@ private struct HeatmapDetailView: View {
                         ForEach(Array(heatmapDays.enumerated()), id: \.offset) { _, day in
                             let level = intensity(for: day)
                             if level > 0 {
-                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                    .fill(heatColor.opacity(level))
-                                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.2), radius: 3, x: 3, y: 3)
-                                    .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7), radius: 3, x: -1.5, y: -1.5)
+                                CandyHeatSquare(baseColor: heatColor, level: level, cornerRadius: 3)
                                     .aspectRatio(1, contentMode: .fit)
                             } else {
                                 ZStack {
@@ -613,7 +754,8 @@ private struct HeatmapDetailView: View {
 
 private struct AttentionDetailView: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.dismiss) private var dismiss
+    @Binding var path: NavigationPath
+    @Query private var packs: [Pack]
     let verses: [Verse]
 
     private func healthColor(for health: Double) -> Color {
@@ -626,55 +768,101 @@ private struct AttentionDetailView: View {
         )
     }
 
+    private func mostRecentlyAccessedPack(for verse: Verse) -> Pack? {
+        let matching = packs.filter { pack in
+            pack.verses.contains(where: { $0.id == verse.id })
+        }
+        return matching.max { lhs, rhs in
+            let l = lhs.lastAccessedAt ?? lhs.createdAt
+            let r = rhs.lastAccessedAt ?? rhs.createdAt
+            return l < r
+        }
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.45))
-                    }
-                    Spacer()
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 24) {
+                NeuCircleButton(icon: "chevron.left", size: 40) {
+                    if !path.isEmpty { path.removeLast() }
                 }
 
                 Text("Needs Attention")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.88) : Color(white: 0.18))
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
 
-                if verses.isEmpty {
-                    Text("All verses are in great shape!")
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
-                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.5))
-                } else {
-                    Text("These verses could use some review.")
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
-                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.5))
+                ZStack(alignment: .topLeading) {
+                    NeuRaised(shape: RoundedRectangle(cornerRadius: neuCorner, style: .continuous))
 
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(verses.isEmpty ? "All verses are in great shape." : "These verses could use review.")
+                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.5))
+
+                        if verses.isEmpty {
+                            HStack(spacing: 10) {
+                                Image(systemName: "checkmark.circle")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color(red: 0.55, green: 0.78, blue: 0.95).opacity(0.75))
+                                Text("No low-health verses right now.")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.62) : Color.black.opacity(0.58))
+                            }
+                        } else {
+                            Text("\(verses.count) verse\(verses.count == 1 ? "" : "s") below ideal memory health")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.4) : Color.black.opacity(0.38))
+                        }
+                    }
+                    .padding(16)
+                }
+
+                if !verses.isEmpty {
                     VStack(spacing: 14) {
                         ForEach(verses, id: \.id) { verse in
-                            HStack(spacing: 10) {
-                                Circle()
-                                    .fill(healthColor(for: verse.memoryHealth ?? 0))
-                                    .frame(width: 8, height: 8)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(verse.reference)
-                                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.7) : Color.black.opacity(0.65))
-                                    if let pack = verse.pack {
-                                        Text(pack.title)
-                                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                            Button {
+                                guard let pack = mostRecentlyAccessedPack(for: verse) ?? verse.pack else { return }
+                                path.append(PackFocusRoute(pack: pack, verseID: verse.id))
+                            } label: {
+                                ZStack {
+                                    NeuRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 8, distance: 8)
+
+                                    HStack(spacing: 12) {
+                                        ZStack {
+                                            NeuInset(shape: Circle())
+                                            Circle()
+                                                .fill(healthColor(for: verse.memoryHealth ?? 0))
+                                                .frame(width: 8, height: 8)
+                                        }
+                                        .frame(width: 20, height: 20)
+
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(verse.reference)
+                                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.72) : Color.black.opacity(0.66))
+                                            if let pack = verse.pack {
+                                                Text(pack.title)
+                                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.36) : Color.black.opacity(0.36))
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        Text("\(Int((verse.memoryHealth ?? 0) * 100))%")
+                                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                                            .foregroundStyle(healthColor(for: verse.memoryHealth ?? 0))
                                     }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
                                 }
-                                Spacer()
-                                Text("\(Int((verse.memoryHealth ?? 0) * 100))%")
-                                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                                    .foregroundStyle(healthColor(for: verse.memoryHealth ?? 0))
                             }
+                            .buttonStyle(.plain)
+                            .disabled(verse.pack == nil)
                         }
                     }
                 }
+
+                Spacer().frame(height: 40)
             }
             .padding(20)
         }

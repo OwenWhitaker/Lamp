@@ -5,10 +5,21 @@ struct FlashcardView: View {
     @Environment(\.dismiss) private var dismiss
     let pack: Pack
     let verses: [Verse]
+    let initialVerseID: UUID?
 
-    @State private var currentIndex: Int = 0
+    @State private var currentIndex: Int
     @State private var isFlipped = false
     @State private var showSwipeToSort = false
+
+    init(pack: Pack, verses: [Verse], initialVerseID: UUID? = nil) {
+        self.pack = pack
+        self.verses = verses
+        self.initialVerseID = initialVerseID
+        let startIndex = initialVerseID.flatMap { id in
+            verses.firstIndex(where: { $0.id == id })
+        } ?? 0
+        _currentIndex = State(initialValue: startIndex)
+    }
 
     private var currentVerse: Verse? {
         guard verses.indices.contains(currentIndex) else { return nil }
