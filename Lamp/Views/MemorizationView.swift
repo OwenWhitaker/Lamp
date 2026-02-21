@@ -289,7 +289,7 @@ struct MemorizationView: View {
 
     private func markGotIt() {
         guard let verse = currentVerse else { return }
-        verse.lastReviewed = Date()
+        verse.logReview(at: Date())
         let current = verse.memoryHealth ?? 0
         verse.memoryHealth = min(1, current + 0.1)
         try? modelContext.save()
@@ -297,7 +297,7 @@ struct MemorizationView: View {
 
     private func markNeedsWork() {
         guard let verse = currentVerse else { return }
-        verse.lastReviewed = Date()
+        verse.logReview(at: Date())
         let current = verse.memoryHealth ?? 0
         verse.memoryHealth = max(0, current - 0.1)
         try? modelContext.save()

@@ -52,16 +52,18 @@ struct HomeView: View {
     }
 
     private var reviewedDaySet: Set<Date> {
-        Set(verses.compactMap(\.lastReviewed).map { Calendar.current.startOfDay(for: $0) })
+        Set(verses.flatMap { verse in
+            verse.reviewDays().map { Calendar.current.startOfDay(for: $0) }
+        })
     }
 
     private var reviewCountByDay: [Date: Int] {
         let cal = Calendar.current
         var counts: [Date: Int] = [:]
         for verse in verses {
-            guard let reviewed = verse.lastReviewed else { continue }
-            let day = cal.startOfDay(for: reviewed)
-            counts[day, default: 0] += 1
+            for day in verse.reviewDays(calendar: cal) {
+                counts[day, default: 0] += 1
+            }
         }
         return counts
     }
@@ -307,7 +309,7 @@ private struct HomeAMHRing: View {
     let progress: Double
 
     private let ringDiameter: CGFloat = 190
-    private let ringWidth: CGFloat = 24
+    private let ringWidth: CGFloat = 26
     private let scoreFontSize: CGFloat = 88
 
     private var ringColor: Color {
@@ -327,77 +329,61 @@ private struct HomeAMHRing: View {
     }
 
     var body: some View {
+        let clampedProgress = min(1, max(0, progress))
+        let baseMedallionDiameter = ringDiameter + 8
+        let ringBodyDiameter = ringDiameter - 14
+        let ringPathDiameter = ringBodyDiameter
+        let trackWidth = max(14, ringWidth - 8)
+        let progressWidth = max(13, trackWidth - 1)
+        let centerDiskDiameter = ringBodyDiameter - trackWidth - 26
+        let tintMaskColors: [Color] = colorScheme == .dark
+            ? [.black, .clear]
+            : [.clear, .black]
+
         ZStack {
-            // MARK: Raised ring (torus)
+            // Base medallion rising from the page.
+            Circle()
+                .fill(Color.neuBg)
+                .frame(width: baseMedallionDiameter, height: baseMedallionDiameter)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.45 : 0.18), radius: 13, x: 9, y: 9)
+                .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.74), radius: 11, x: -6, y: -6)
+
+            // Ring body raised on top of the medallion.
             Circle()
                 .stroke(Color.neuBg, lineWidth: ringWidth)
-                .frame(width: ringDiameter, height: ringDiameter)
-                .shadow(
-                    color: Color.black.opacity(colorScheme == .dark ? 0.4 : 0.2),
-                    radius: 5, x: 6, y: 6
-                )
-                .shadow(
-                    color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.7),
-                    radius: 5, x: -3, y: -3
-                )
+                .frame(width: ringBodyDiameter, height: ringBodyDiameter)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.36 : 0.16), radius: 8, x: 6, y: 6)
+                .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.1 : 0.58), radius: 8, x: -4, y: -4)
 
-            // MARK: Progress arc (emissive solid neumorphic material)
-            // Broad emissive bloom.
+            // Broad neutral track under the progress segment.
             Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    (colorScheme == .dark ? ringColor : Color(red: 0.95, green: 0.56, blue: 0.22))
-                        .opacity(colorScheme == .dark ? 0.3 : 0.22),
-                    style: StrokeStyle(lineWidth: ringWidth + 10, lineCap: .round)
-                )
-                .frame(width: ringDiameter, height: ringDiameter)
-                .blur(radius: colorScheme == .dark ? 8 : 7)
-                .blendMode(.screen)
+                .stroke(Color.neuBg.opacity(colorScheme == .dark ? 0.93 : 0.98), lineWidth: trackWidth)
+                .frame(width: ringPathDiameter, height: ringPathDiameter)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.08), radius: 1.6, x: 1.1, y: 1.1)
+                .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.45), radius: 1.2, x: -0.8, y: -0.8)
+
+            // Progress segment: solid raised element.
+            Circle()
+                .trim(from: 0, to: clampedProgress)
+                .stroke(ringColor.opacity(colorScheme == .dark ? 0.28 : 0.2), style: StrokeStyle(lineWidth: progressWidth + 6, lineCap: .round))
+                .frame(width: ringPathDiameter, height: ringPathDiameter)
+                .blur(radius: colorScheme == .dark ? 2.2 : 1.6)
                 .rotationEffect(.degrees(-90))
 
-            // Tight bloom near the core.
             Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    (colorScheme == .dark ? ringColor : Color(red: 0.95, green: 0.56, blue: 0.22))
-                        .opacity(colorScheme == .dark ? 0.44 : 0.32),
-                    style: StrokeStyle(lineWidth: ringWidth + 4, lineCap: .round)
-                )
-                .frame(width: ringDiameter, height: ringDiameter)
-                .blur(radius: colorScheme == .dark ? 4 : 3.4)
-                .blendMode(.screen)
+                .trim(from: 0, to: clampedProgress)
+                .stroke(ringColor, style: StrokeStyle(lineWidth: progressWidth, lineCap: .round))
+                .frame(width: ringPathDiameter, height: ringPathDiameter)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.24 : 0.16), radius: 1.9, x: 1.2, y: 1.2)
+                .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.12 : 0.34), radius: 1.9, x: -1.2, y: -1.2)
                 .rotationEffect(.degrees(-90))
 
-            // Solid emissive core material.
+            // Inner medallion raised in the center of the ring.
             Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    ringColor,
-                    style: StrokeStyle(lineWidth: ringWidth - 4, lineCap: .round)
-                )
-                .frame(width: ringDiameter, height: ringDiameter)
-                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.14 : 0.02), radius: 1.5, x: 0.8, y: 0.8)
-                .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.2 : 0.42), radius: 1.6, x: -0.5, y: -0.5)
-                .rotationEffect(.degrees(-90))
-
-            // Specular top-left sheen.
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(
-                    (colorScheme == .dark ? Color.white : Color(red: 1.0, green: 0.78, blue: 0.55))
-                        .opacity(colorScheme == .dark ? 0.24 : 0.35),
-                    style: StrokeStyle(lineWidth: ringWidth - 11, lineCap: .round)
-                )
-                .frame(width: ringDiameter, height: ringDiameter)
-                .mask(
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(style: StrokeStyle(lineWidth: ringWidth - 7, lineCap: .round))
-                        .fill(LinearGradient(colors: [.black, .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
-                )
-                .blur(radius: 1)
-                .blendMode(.screen)
-                .rotationEffect(.degrees(-90))
+                .fill(Color.neuBg)
+                .frame(width: centerDiskDiameter, height: centerDiskDiameter)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.15), radius: 7, x: 4, y: 4)
+                .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.72), radius: 6, x: -3, y: -3)
 
             // MARK: Center text (Embossed)
             ZStack {
@@ -418,6 +404,22 @@ private struct HomeAMHRing: View {
                 Text(scoreText)
                     .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
                     .foregroundStyle(Color.neuBg)
+
+                // Bottom tint matches ring color.
+                Text(scoreText)
+                    .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
+                    .foregroundStyle(ringColor.opacity(colorScheme == .dark ? 0.68 : 0.58))
+                    .mask(
+                        Text(scoreText)
+                            .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: tintMaskColors,
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    )
             }
         }
         .frame(width: ringDiameter + ringWidth + 24, height: ringDiameter + ringWidth + 24)
@@ -506,9 +508,15 @@ private struct HeatmapCard: View {
             NeuRaised(shape: RoundedRectangle(cornerRadius: neuCorner, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Review")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.6) : Color.black.opacity(0.55))
+                HStack {
+                    Text("Review")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.6) : Color.black.opacity(0.55))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.3))
+                }
                 Text("Last 30 days")
                     .font(.system(size: 10, weight: .medium, design: .rounded))
                     .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
@@ -595,26 +603,50 @@ private struct NeedsAttentionCard: View {
 
     private var verseList: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Needs attention")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("Needs attention")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.6) : Color.black.opacity(0.55))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.3))
+                }
+                Text("Lowest memory health")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+            }
 
-            VStack(spacing: 8) {
-                ForEach(verses, id: \.id) { verse in
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(healthColor(for: verse.memoryHealth ?? 0))
-                            .frame(width: 6, height: 6)
-                        Text(verse.reference)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.65) : Color.black.opacity(0.6))
-                            .lineLimit(1)
-                        Spacer()
-                        Text("\(Int((verse.memoryHealth ?? 0) * 100))%")
-                            .font(.system(size: 10, weight: .medium, design: .rounded))
-                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+            ZStack {
+                NeuInset(shape: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(spacing: 7) {
+                    ForEach(verses, id: \.id) { verse in
+                        HStack(spacing: 6) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.neuBg)
+                                    .frame(width: 9, height: 9)
+                                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.16), radius: 1.2, x: 1.0, y: 1.0)
+                                    .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.6), radius: 1.2, x: -0.5, y: -0.5)
+                                Circle()
+                                    .fill(healthColor(for: verse.memoryHealth ?? 0))
+                                    .frame(width: 5.5, height: 5.5)
+                            }
+                            Text(verse.reference)
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.65) : Color.black.opacity(0.6))
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(Int((verse.memoryHealth ?? 0) * 100))%")
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                        }
                     }
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 9)
             }
         }
         .padding(14)
