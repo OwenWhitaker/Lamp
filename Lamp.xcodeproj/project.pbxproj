@@ -21,6 +21,9 @@
 		A10000000000000000000019 /* NeuDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001C /* NeuDesignSystem.swift */; };
 		A10000000000000000000030 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000031 /* HomeView.swift */; };
 		A10000000000000000000032 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000033 /* SettingsView.swift */; };
+		A10000000000000000000034 /* Reminder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000035 /* Reminder.swift */; };
+		A10000000000000000000036 /* RemindersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000037 /* RemindersView.swift */; };
+		A10000000000000000000038 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000039 /* NotificationManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -39,6 +42,9 @@
 		A1000000000000000000001C /* NeuDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeuDesignSystem.swift; sourceTree = "<group>"; };
 		A10000000000000000000031 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		A10000000000000000000033 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A10000000000000000000035 /* Reminder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Reminder.swift; sourceTree = "<group>"; };
+		A10000000000000000000037 /* RemindersView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemindersView.swift; sourceTree = "<group>"; };
+		A10000000000000000000039 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,6 +64,7 @@
 				A10000000000000000000002 /* LampApp.swift */,
 				A10000000000000000000004 /* ContentView.swift */,
 				A1000000000000000000001C /* NeuDesignSystem.swift */,
+				A10000000000000000000039 /* NotificationManager.swift */,
 				A1000000000000000000001E /* Models */,
 				A1000000000000000000001F /* Views */,
 				A10000000000000000000020 /* Resources */,
@@ -70,6 +77,7 @@
 			children = (
 				A10000000000000000000006 /* Pack.swift */,
 				A10000000000000000000008 /* Verse.swift */,
+				A10000000000000000000035 /* Reminder.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -85,6 +93,7 @@
 				A10000000000000000000014 /* AddVerseView.swift */,
 				A10000000000000000000031 /* HomeView.swift */,
 				A10000000000000000000033 /* SettingsView.swift */,
+				A10000000000000000000037 /* RemindersView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -190,6 +199,9 @@
 				A10000000000000000000019 /* NeuDesignSystem.swift in Sources */,
 				A10000000000000000000030 /* HomeView.swift in Sources */,
 				A10000000000000000000032 /* SettingsView.swift in Sources */,
+				A10000000000000000000034 /* Reminder.swift in Sources */,
+				A10000000000000000000036 /* RemindersView.swift in Sources */,
+				A10000000000000000000038 /* NotificationManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

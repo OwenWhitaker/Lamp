@@ -3,12 +3,13 @@ import SwiftUI
 // MARK: - Tab Definition
 
 private enum Tab: Int, CaseIterable, Hashable {
-    case home = 0, packs, settings
+    case home = 0, packs, reminders, settings
 
     var label: String {
         switch self {
         case .home: "Home"
-        case .packs: "My Packs"
+        case .packs: "Packs"
+        case .reminders: "Reminders"
         case .settings: "Settings"
         }
     }
@@ -16,7 +17,8 @@ private enum Tab: Int, CaseIterable, Hashable {
     var icon: String {
         switch self {
         case .home: "house.fill"
-        case .packs: "folder.fill"
+        case .packs: "pad.header"
+        case .reminders: "bell.fill"
         case .settings: "gearshape"
         }
     }
@@ -27,6 +29,7 @@ private enum Tab: Int, CaseIterable, Hashable {
 struct ContentView: View {
     @State private var path = NavigationPath()
     @State private var homePath = NavigationPath()
+    @State private var remindersPath = NavigationPath()
     @State private var showAddPack = false
     @State private var selectedTab: Tab = .home
 
@@ -53,6 +56,11 @@ struct ContentView: View {
                 }
                 .opacity(selectedTab == .home ? 1 : 0)
 
+                NavigationStack(path: $remindersPath) {
+                    RemindersView()
+                }
+                .opacity(selectedTab == .reminders ? 1 : 0)
+
                 NavigationStack {
                     SettingsView()
                 }
@@ -76,6 +84,7 @@ struct ContentView: View {
                         switch tab {
                         case .packs: path = NavigationPath()
                         case .home: homePath = NavigationPath()
+                        case .reminders: remindersPath = NavigationPath()
                         case .settings: break
                         }
                     }
@@ -280,5 +289,5 @@ private struct NeuTabBar: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [Pack.self, Verse.self], inMemory: true)
+        .modelContainer(for: [Pack.self, Verse.self, Reminder.self], inMemory: true)
 }
