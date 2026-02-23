@@ -6,12 +6,27 @@ struct NotificationManager {
     }
 
     static func scheduleReminder(_ reminder: Reminder) {
+        guard reminder.isEnabled, reminder.isDateEnabled else {
+            cancelReminder(reminder)
+            return
+        }
+
         let content = UNMutableNotificationContent()
         content.title = "Lamp"
         content.body = reminder.title
+        if !reminder.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            content.subtitle = reminder.notes
+        }
+        if reminder.isUrgent {
+            content.interruptionLevel = .timeSensitive
+        }
         content.sound = .default
 
-        let components = Calendar.current.dateComponents([.hour, .minute], from: reminder.scheduledTime)
+        var components = Calendar.current.dateComponents([.hour, .minute], from: reminder.scheduledTime)
+        if !reminder.isTimeEnabled {
+            components.hour = 9
+            components.minute = 0
+        }
 
         let trigger: UNNotificationTrigger
         switch reminder.repeatFrequency {
