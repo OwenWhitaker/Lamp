@@ -328,6 +328,10 @@ private struct HomeAMHRing: View {
         "\(Int(progress * 100))"
     }
 
+    private var scoreDisplayFontSize: CGFloat {
+        scoreText.count >= 3 ? scoreFontSize * 0.8 : scoreFontSize
+    }
+
     var body: some View {
         let clampedProgress = min(1, max(0, progress))
         let baseMedallionDiameter = ringDiameter + 8
@@ -389,29 +393,29 @@ private struct HomeAMHRing: View {
             ZStack {
                 // Dark rim on top-left.
                 Text(scoreText)
-                    .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
+                    .font(.system(size: scoreDisplayFontSize, weight: .heavy, design: .default))
                     .foregroundStyle(Color.black.opacity(colorScheme == .dark ? 0.6 : 0.32))
                     .offset(x: -1.6, y: -1.6)
                     .blur(radius: 0.9)
 
                 // Light rim on bottom-right.
                 Text(scoreText)
-                    .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
+                    .font(.system(size: scoreDisplayFontSize, weight: .heavy, design: .default))
                     .foregroundStyle(Color.white.opacity(colorScheme == .dark ? 0.26 : 0.95))
                     .offset(x: 1.2, y: 1.2)
 
                 // Base glyph.
                 Text(scoreText)
-                    .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
+                    .font(.system(size: scoreDisplayFontSize, weight: .heavy, design: .default))
                     .foregroundStyle(Color.neuBg)
 
                 // Bottom tint matches ring color.
                 Text(scoreText)
-                    .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
+                    .font(.system(size: scoreDisplayFontSize, weight: .heavy, design: .default))
                     .foregroundStyle(ringColor.opacity(colorScheme == .dark ? 0.68 : 0.58))
                     .mask(
                         Text(scoreText)
-                            .font(.system(size: scoreFontSize, weight: .heavy, design: .default))
+                            .font(.system(size: scoreDisplayFontSize, weight: .heavy, design: .default))
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: tintMaskColors,
@@ -487,6 +491,8 @@ private struct HeatmapCard: View {
     let reviewCountByDay: [Date: Int]
     let totalVerses: Int
     let reviewsThisWeek: Int
+    @State private var cachedGridImage: Image?
+    @State private var cachedGridKey: String = ""
 
     private let cols = 10
     private let rows = 3
@@ -494,6 +500,14 @@ private struct HeatmapCard: View {
     private let cellSpacing: CGFloat = 3
 
     private let heatColor = Color(red: 0.35, green: 0.6, blue: 0.95)
+
+    private var gridWidth: CGFloat {
+        CGFloat(cols) * cellSize + CGFloat(cols - 1) * cellSpacing
+    }
+
+    private var gridHeight: CGFloat {
+        CGFloat(rows) * cellSize + CGFloat(rows - 1) * cellSpacing
+    }
 
     private func intensity(for day: Date) -> Double {
         guard totalVerses > 0 else { return 0 }
@@ -532,12 +546,28 @@ private struct HeatmapCard: View {
             .padding(14)
         }
         .frame(maxWidth: .infinity, minHeight: 130)
+        .task(id: gridCacheKey) {
+            updateGridSnapshotIfNeeded()
+        }
     }
 
     // Grid: columns are weeks (oldest left, newest right).
     // Within each column, days fill bottom-to-top.
     // Index 0 = oldest day, index 29 = today (bottom-right).
     private var heatmapGrid: some View {
+        Group {
+            if let cachedGridImage, cachedGridKey == gridCacheKey {
+                cachedGridImage
+                    .resizable()
+                    .interpolation(.none)
+            } else {
+                liveHeatmapGrid
+            }
+        }
+        .frame(width: gridWidth, height: gridHeight)
+    }
+
+    private var liveHeatmapGrid: some View {
         HStack(spacing: cellSpacing) {
             ForEach(0..<cols, id: \.self) { col in
                 VStack(spacing: cellSpacing) {
@@ -578,6 +608,37 @@ private struct HeatmapCard: View {
                     }
                 }
             }
+        }
+    }
+
+    private var gridCacheKey: String {
+        let schemeKey = colorScheme == .dark ? "dark" : "light"
+        let levelsKey = (0..<(cols * rows))
+            .map { dayIndex -> String in
+                guard dayIndex < heatmapDays.count else { return "x" }
+                let level = intensity(for: heatmapDays[dayIndex])
+                return String(Int((level * 1000).rounded()))
+            }
+            .joined(separator: ",")
+        return "\(schemeKey)|\(levelsKey)"
+    }
+
+    @MainActor
+    private func updateGridSnapshotIfNeeded() {
+        guard cachedGridKey != gridCacheKey else { return }
+
+        let renderer = ImageRenderer(
+            content: liveHeatmapGrid.frame(width: gridWidth, height: gridHeight)
+        )
+        renderer.proposedSize = ProposedViewSize(width: gridWidth, height: gridHeight)
+        renderer.scale = UIScreen.main.scale
+
+        if let uiImage = renderer.uiImage {
+            cachedGridImage = Image(uiImage: uiImage)
+            cachedGridKey = gridCacheKey
+        } else {
+            cachedGridImage = nil
+            cachedGridKey = ""
         }
     }
 }
@@ -686,14 +747,90 @@ private struct HeatmapDetailView: View {
     let reviewCountByDay: [Date: Int]
     let totalVerses: Int
     let reviewsThisWeek: Int
+    @State private var cachedDetailGridImage: Image?
+    @State private var cachedDetailGridKey: String = ""
+    @State private var detailGridWidth: CGFloat = 0
 
     private let heatColor = Color(red: 0.35, green: 0.6, blue: 0.95)
+    private let detailGridColumns = 10
+    private let detailGridSpacing: CGFloat = 5
 
     private func intensity(for day: Date) -> Double {
         guard totalVerses > 0 else { return 0 }
         let count = reviewCountByDay[day, default: 0]
         guard count > 0 else { return 0 }
         return min(1.0, max(0.25, Double(count) / Double(totalVerses)))
+    }
+
+    private var detailGridDataKey: String {
+        let schemeKey = colorScheme == .dark ? "dark" : "light"
+        let levelsKey = heatmapDays
+            .map { day in
+                let level = intensity(for: day)
+                return String(Int((level * 1000).rounded()))
+            }
+            .joined(separator: ",")
+        return "\(schemeKey)|\(levelsKey)"
+    }
+
+    private var liveDetailHeatmapGrid: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: detailGridSpacing), count: detailGridColumns),
+            spacing: detailGridSpacing
+        ) {
+            ForEach(Array(heatmapDays.enumerated()), id: \.offset) { _, day in
+                let level = intensity(for: day)
+                if level > 0 {
+                    CandyHeatSquare(baseColor: heatColor, level: level, cornerRadius: 3)
+                        .aspectRatio(1, contentMode: .fit)
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(Color.neuBg)
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .stroke(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(colorScheme == .dark ? 0.5 : 0.5), lineWidth: 4)
+                            .blur(radius: 3)
+                            .offset(x: 2, y: 2)
+                            .mask(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(
+                                LinearGradient(colors: [.black, .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            ))
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .stroke(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.9), lineWidth: 4)
+                            .blur(radius: 3)
+                            .offset(x: -2, y: -2)
+                            .mask(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(
+                                LinearGradient(colors: [.clear, .black], startPoint: .topLeading, endPoint: .bottomTrailing)
+                            ))
+                    }
+                    .aspectRatio(1, contentMode: .fit)
+                }
+            }
+        }
+    }
+
+    private func detailGridCacheKey(for width: CGFloat) -> String {
+        "\(detailGridDataKey)|w\(Int((width * 10).rounded()))"
+    }
+
+    @MainActor
+    private func updateDetailGridSnapshotIfNeeded(width: CGFloat) {
+        guard width > 0 else { return }
+        let cacheKey = detailGridCacheKey(for: width)
+        guard cachedDetailGridKey != cacheKey else { return }
+
+        let renderer = ImageRenderer(
+            content: liveDetailHeatmapGrid.frame(width: width)
+        )
+        renderer.proposedSize = ProposedViewSize(width: width, height: nil)
+        renderer.scale = UIScreen.main.scale
+
+        if let uiImage = renderer.uiImage {
+            cachedDetailGridImage = Image(uiImage: uiImage)
+            cachedDetailGridKey = cacheKey
+        } else {
+            cachedDetailGridImage = nil
+            cachedDetailGridKey = ""
+        }
     }
 
     var body: some View {
@@ -715,36 +852,33 @@ private struct HeatmapDetailView: View {
                 ZStack(alignment: .topLeading) {
                     NeuRaised(shape: RoundedRectangle(cornerRadius: neuCorner, style: .continuous))
 
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 10), spacing: 5) {
-                        ForEach(Array(heatmapDays.enumerated()), id: \.offset) { _, day in
-                            let level = intensity(for: day)
-                            if level > 0 {
-                                CandyHeatSquare(baseColor: heatColor, level: level, cornerRadius: 3)
-                                    .aspectRatio(1, contentMode: .fit)
-                            } else {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                        .fill(Color.neuBg)
-                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                        .stroke(Color(white: colorScheme == .dark ? 0 : 0.5).opacity(colorScheme == .dark ? 0.5 : 0.5), lineWidth: 4)
-                                        .blur(radius: 3)
-                                        .offset(x: 2, y: 2)
-                                        .mask(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(
-                                            LinearGradient(colors: [.black, .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                        ))
-                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                        .stroke(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.9), lineWidth: 4)
-                                        .blur(radius: 3)
-                                        .offset(x: -2, y: -2)
-                                        .mask(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(
-                                            LinearGradient(colors: [.clear, .black], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                        ))
-                                }
-                                .aspectRatio(1, contentMode: .fit)
-                            }
+                    Group {
+                        let activeCacheKey = detailGridWidth > 0 ? detailGridCacheKey(for: detailGridWidth) : ""
+                        if let cachedDetailGridImage, cachedDetailGridKey == activeCacheKey {
+                            cachedDetailGridImage
+                                .resizable()
+                                .interpolation(.none)
+                                .aspectRatio(contentMode: .fit)
+                        } else {
+                            liveDetailHeatmapGrid
                         }
                     }
                     .padding(16)
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear
+                                .task(id: Int((proxy.size.width * 10).rounded())) {
+                                    let measuredWidth = proxy.size.width
+                                    guard measuredWidth > 0 else { return }
+                                    detailGridWidth = measuredWidth
+                                    updateDetailGridSnapshotIfNeeded(width: measuredWidth)
+                                }
+                        }
+                    )
+                    .task(id: detailGridDataKey) {
+                        guard detailGridWidth > 0 else { return }
+                        updateDetailGridSnapshotIfNeeded(width: detailGridWidth)
+                    }
                 }
 
                 // Recent days in raised card
