@@ -798,5 +798,5 @@ private struct PackOptionsSheet: View {
             path: .constant(NavigationPath())
         )
     }
-    .modelContainer(for: [Pack.self, Verse.self], inMemory: true)
+    .modelContainer(for: [Pack.self, Verse.self, ReviewEvent.self, ReviewRecord.self], inMemory: true)
 }

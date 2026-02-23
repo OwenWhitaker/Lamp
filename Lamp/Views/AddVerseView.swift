@@ -49,5 +49,5 @@ struct AddVerseView: View {
 
 #Preview {
     AddVerseView(pack: Pack(title: "Preview"), isPresented: .constant(true))
-        .modelContainer(for: [Pack.self, Verse.self], inMemory: true)
+        .modelContainer(for: [Pack.self, Verse.self, ReviewEvent.self, ReviewRecord.self], inMemory: true)
 }

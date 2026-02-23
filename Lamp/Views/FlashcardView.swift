@@ -183,5 +183,5 @@ struct FlashcardView: View {
             Verse(reference: "Psalm 23:1", text: "The Lord is my shepherd...", order: 1),
         ]
     )
-    .modelContainer(for: [Pack.self, Verse.self], inMemory: true)
+    .modelContainer(for: [Pack.self, Verse.self, ReviewEvent.self, ReviewRecord.self], inMemory: true)
 }

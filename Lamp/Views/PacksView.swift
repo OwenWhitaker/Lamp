@@ -541,5 +541,5 @@ private struct NeuAddCard: View {
         PacksView(path: .constant(NavigationPath()), showAddPack: .constant(false))
             .navigationTitle("My Packs")
     }
-    .modelContainer(for: [Pack.self, Verse.self], inMemory: true)
+    .modelContainer(for: [Pack.self, Verse.self, ReviewEvent.self, ReviewRecord.self], inMemory: true)
 }

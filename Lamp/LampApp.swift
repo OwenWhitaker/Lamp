@@ -6,7 +6,7 @@ struct LampApp: App {
     @AppStorage("appearanceMode") private var appearanceMode: Int = 0  // 0=system, 1=light, 2=dark
 
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([Pack.self, Verse.self, Reminder.self])
+        let schema = Schema([Pack.self, Verse.self, ReviewEvent.self, ReviewRecord.self, Reminder.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: false)
         return try! ModelContainer(for: schema, configurations: [config])
     }()

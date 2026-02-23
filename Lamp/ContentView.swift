@@ -289,5 +289,5 @@ private struct NeuTabBar: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [Pack.self, Verse.self, Reminder.self], inMemory: true)
+        .modelContainer(for: [Pack.self, Verse.self, ReviewEvent.self, ReviewRecord.self, Reminder.self], inMemory: true)
 }

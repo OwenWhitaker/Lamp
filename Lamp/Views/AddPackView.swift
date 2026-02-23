@@ -124,5 +124,5 @@ struct AddPackView: View {
 
 #Preview {
     AddPackView(isPresented: .constant(true))
-        .modelContainer(for: [Pack.self, Verse.self], inMemory: true)
+        .modelContainer(for: [Pack.self, Verse.self, ReviewEvent.self, ReviewRecord.self], inMemory: true)
 }

@@ -37,6 +37,7 @@ struct HomeView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Query private var packs: [Pack]
     @Query private var verses: [Verse]
+    @Query(sort: \ReviewRecord.reviewedAt, order: .reverse) private var reviewRecords: [ReviewRecord]
     @Binding var path: NavigationPath
     @State private var showMemoryHealthInfo = false
 
@@ -51,21 +52,26 @@ struct HomeView: View {
         return healthValues.reduce(0, +) / Double(healthValues.count)
     }
 
-    private var reviewedDaySet: Set<Date> {
-        Set(verses.flatMap { verse in
-            verse.reviewDays().map { Calendar.current.startOfDay(for: $0) }
-        })
-    }
-
     private var reviewCountByDay: [Date: Int] {
         let cal = Calendar.current
-        var counts: [Date: Int] = [:]
+        var versesByDay: [Date: Set<UUID>] = [:]
+
+        // Dedicated local review storage (new path).
+        for record in reviewRecords {
+            versesByDay[record.reviewDay, default: []].insert(record.verseID)
+        }
+
+        // Legacy fallback path merged in for continuity on upgraded installs.
         for verse in verses {
             for day in verse.reviewDays(calendar: cal) {
-                counts[day, default: 0] += 1
+                versesByDay[day, default: []].insert(verse.id)
             }
         }
-        return counts
+        return versesByDay.mapValues(\.count)
+    }
+
+    private var reviewedDaySet: Set<Date> {
+        Set(reviewCountByDay.keys)
     }
 
     private var currentStreak: Int {
@@ -166,7 +172,6 @@ struct HomeView: View {
                             HeatmapCard(
                                 heatmapDays: heatmapDays,
                                 reviewCountByDay: reviewCountByDay,
-                                totalVerses: verses.count,
                                 reviewsThisWeek: reviewsThisWeek
                             )
                         }
@@ -193,7 +198,6 @@ struct HomeView: View {
                 HeatmapDetailView(
                     heatmapDays: heatmapDays,
                     reviewCountByDay: reviewCountByDay,
-                    totalVerses: verses.count,
                     reviewsThisWeek: reviewsThisWeek
                 )
             case .attention:
@@ -485,14 +489,23 @@ private struct CandyHeatSquare: View {
     }
 }
 
+private func githubHeatLevel(for count: Int, maxCount: Int) -> Double {
+    guard count > 0, maxCount > 0 else { return 0 }
+    let ratio = Double(count) / Double(maxCount)
+    switch ratio {
+    case ..<0.25: return 0.28
+    case ..<0.5: return 0.48
+    case ..<0.75: return 0.72
+    default: return 1.0
+    }
+}
+
 private struct HeatmapCard: View {
     @Environment(\.colorScheme) private var colorScheme
     let heatmapDays: [Date]
     let reviewCountByDay: [Date: Int]
-    let totalVerses: Int
     let reviewsThisWeek: Int
-    @State private var cachedGridImage: Image?
-    @State private var cachedGridKey: String = ""
+    @State private var cachedGridImages: [String: Image] = [:]
 
     private let cols = 10
     private let rows = 3
@@ -509,12 +522,13 @@ private struct HeatmapCard: View {
         CGFloat(rows) * cellSize + CGFloat(rows - 1) * cellSpacing
     }
 
+    private var maxDailyReviewCount: Int {
+        heatmapDays.reduce(0) { max($0, reviewCountByDay[$1, default: 0]) }
+    }
+
     private func intensity(for day: Date) -> Double {
-        guard totalVerses > 0 else { return 0 }
         let count = reviewCountByDay[day, default: 0]
-        guard count > 0 else { return 0 }
-        // Normalize: 1 verse = 0.25, all verses = 1.0
-        return min(1.0, max(0.25, Double(count) / Double(totalVerses)))
+        return githubHeatLevel(for: count, maxCount: maxDailyReviewCount)
     }
 
     var body: some View {
@@ -556,7 +570,7 @@ private struct HeatmapCard: View {
     // Index 0 = oldest day, index 29 = today (bottom-right).
     private var heatmapGrid: some View {
         Group {
-            if let cachedGridImage, cachedGridKey == gridCacheKey {
+            if let cachedGridImage = cachedGridImages[gridCacheKey] {
                 cachedGridImage
                     .resizable()
                     .interpolation(.none)
@@ -620,25 +634,25 @@ private struct HeatmapCard: View {
                 return String(Int((level * 1000).rounded()))
             }
             .joined(separator: ",")
-        return "\(schemeKey)|\(levelsKey)"
+        return "v3|\(schemeKey)|\(levelsKey)"
     }
 
     @MainActor
     private func updateGridSnapshotIfNeeded() {
-        guard cachedGridKey != gridCacheKey else { return }
+        guard cachedGridImages[gridCacheKey] == nil else { return }
+
+        let renderContent = liveHeatmapGrid
+            .frame(width: gridWidth, height: gridHeight)
+            .environment(\.colorScheme, colorScheme)
 
         let renderer = ImageRenderer(
-            content: liveHeatmapGrid.frame(width: gridWidth, height: gridHeight)
+            content: renderContent
         )
         renderer.proposedSize = ProposedViewSize(width: gridWidth, height: gridHeight)
         renderer.scale = UIScreen.main.scale
 
         if let uiImage = renderer.uiImage {
-            cachedGridImage = Image(uiImage: uiImage)
-            cachedGridKey = gridCacheKey
-        } else {
-            cachedGridImage = nil
-            cachedGridKey = ""
+            cachedGridImages[gridCacheKey] = Image(uiImage: uiImage)
         }
     }
 }
@@ -745,21 +759,21 @@ private struct HeatmapDetailView: View {
     @Environment(\.dismiss) private var dismiss
     let heatmapDays: [Date]
     let reviewCountByDay: [Date: Int]
-    let totalVerses: Int
     let reviewsThisWeek: Int
-    @State private var cachedDetailGridImage: Image?
-    @State private var cachedDetailGridKey: String = ""
+    @State private var cachedDetailGridImages: [String: Image] = [:]
     @State private var detailGridWidth: CGFloat = 0
 
     private let heatColor = Color(red: 0.35, green: 0.6, blue: 0.95)
     private let detailGridColumns = 10
     private let detailGridSpacing: CGFloat = 5
 
+    private var maxDailyReviewCount: Int {
+        heatmapDays.reduce(0) { max($0, reviewCountByDay[$1, default: 0]) }
+    }
+
     private func intensity(for day: Date) -> Double {
-        guard totalVerses > 0 else { return 0 }
         let count = reviewCountByDay[day, default: 0]
-        guard count > 0 else { return 0 }
-        return min(1.0, max(0.25, Double(count) / Double(totalVerses)))
+        return githubHeatLevel(for: count, maxCount: maxDailyReviewCount)
     }
 
     private var detailGridDataKey: String {
@@ -770,7 +784,7 @@ private struct HeatmapDetailView: View {
                 return String(Int((level * 1000).rounded()))
             }
             .joined(separator: ",")
-        return "\(schemeKey)|\(levelsKey)"
+        return "v3|\(schemeKey)|\(levelsKey)"
     }
 
     private var liveDetailHeatmapGrid: some View {
@@ -816,20 +830,20 @@ private struct HeatmapDetailView: View {
     private func updateDetailGridSnapshotIfNeeded(width: CGFloat) {
         guard width > 0 else { return }
         let cacheKey = detailGridCacheKey(for: width)
-        guard cachedDetailGridKey != cacheKey else { return }
+        guard cachedDetailGridImages[cacheKey] == nil else { return }
+
+        let renderContent = liveDetailHeatmapGrid
+            .frame(width: width)
+            .environment(\.colorScheme, colorScheme)
 
         let renderer = ImageRenderer(
-            content: liveDetailHeatmapGrid.frame(width: width)
+            content: renderContent
         )
         renderer.proposedSize = ProposedViewSize(width: width, height: nil)
         renderer.scale = UIScreen.main.scale
 
         if let uiImage = renderer.uiImage {
-            cachedDetailGridImage = Image(uiImage: uiImage)
-            cachedDetailGridKey = cacheKey
-        } else {
-            cachedDetailGridImage = nil
-            cachedDetailGridKey = ""
+            cachedDetailGridImages[cacheKey] = Image(uiImage: uiImage)
         }
     }
 
@@ -854,7 +868,7 @@ private struct HeatmapDetailView: View {
 
                     Group {
                         let activeCacheKey = detailGridWidth > 0 ? detailGridCacheKey(for: detailGridWidth) : ""
-                        if let cachedDetailGridImage, cachedDetailGridKey == activeCacheKey {
+                        if let cachedDetailGridImage = cachedDetailGridImages[activeCacheKey] {
                             cachedDetailGridImage
                                 .resizable()
                                 .interpolation(.none)
@@ -1043,7 +1057,7 @@ private struct AttentionDetailView: View {
 @MainActor
 private func makePreviewContainer() -> ModelContainer {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: Pack.self, Verse.self, configurations: config)
+    let container = try! ModelContainer(for: Pack.self, Verse.self, ReviewEvent.self, ReviewRecord.self, configurations: config)
 
     let pack = Pack(title: "Psalms")
     container.mainContext.insert(pack)
