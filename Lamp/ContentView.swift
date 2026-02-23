@@ -43,7 +43,10 @@ struct ContentView: View {
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar(.hidden, for: .navigationBar)
                         .navigationDestination(for: Pack.self) { pack in
-                            PackDetailView(pack: pack, path: $path)
+                            PackVersesView(pack: pack, path: $path)
+                        }
+                        .navigationDestination(for: PackFlashcardRoute.self) { route in
+                            PackDetailView(pack: route.pack, path: $path, initialVerseID: route.initialVerseID)
                         }
                         .sheet(isPresented: $showAddPack) {
                             AddPackView(isPresented: $showAddPack)

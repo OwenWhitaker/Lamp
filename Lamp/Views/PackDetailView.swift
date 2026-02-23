@@ -116,6 +116,317 @@ enum VerseCardLayout {
     static let horizontalPadding: CGFloat = 12
 }
 
+struct PackFlashcardRoute: Hashable {
+    let pack: Pack
+    let initialVerseID: UUID?
+}
+
+// MARK: - Pack Verses List View
+
+struct PackVersesView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @Bindable var pack: Pack
+    @Binding var path: NavigationPath
+
+    @State private var showAddVerse = false
+    @State private var showEditVerse = false
+    @State private var pendingVerseDelete: Verse?
+    @State private var pendingVerseEdit: Verse?
+
+    private var sortedVerses: [Verse] {
+        pack.verses.sorted { $0.order < $1.order }
+    }
+
+    private var averageMemoryHealth: Double {
+        let withHealth = pack.verses.compactMap(\.memoryHealth)
+        guard !withHealth.isEmpty else { return 0 }
+        return withHealth.reduce(0, +) / Double(withHealth.count)
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color.neuBg.ignoresSafeArea()
+
+            if sortedVerses.isEmpty {
+                emptyState
+            } else {
+                verseList
+            }
+
+            floatingFooter
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showAddVerse) {
+            NeuAddVerseSheet(pack: pack, isPresented: $showAddVerse)
+        }
+        .sheet(isPresented: $showEditVerse) {
+            if let verse = pendingVerseEdit {
+                EditVerseView(isPresented: $showEditVerse, verse: verse)
+            }
+        }
+        .confirmationDialog("Delete Verse", isPresented: Binding(
+            get: { pendingVerseDelete != nil },
+            set: { if !$0 { pendingVerseDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                deletePendingVerse()
+            }
+            Button("Cancel", role: .cancel) {
+                pendingVerseDelete = nil
+            }
+        } message: {
+            let ref = pendingVerseDelete?.reference ?? "this verse"
+            Text("Are you sure you want to delete \"\(ref)\"?")
+        }
+        .onAppear {
+            markPackAccess()
+        }
+    }
+
+    private var verseList: some View {
+        VStack(spacing: 12) {
+            header
+
+            List {
+                ForEach(sortedVerses) { verse in
+                    verseRow(verse)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                }
+
+                Color.clear
+                    .frame(height: 170)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+        }
+    }
+
+    private var header: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 16) {
+                NeuCircleButton(icon: "chevron.left") {
+                    dismiss()
+                }
+
+                Spacer()
+
+                Text(pack.title)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                Spacer()
+
+                Color.clear
+                    .frame(width: 44, height: 44)
+            }
+
+            Text("\(sortedVerses.count) verse\(sortedVerses.count == 1 ? "" : "s")")
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.42) : Color.black.opacity(0.42))
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+    }
+
+    private func verseRow(_ verse: Verse) -> some View {
+        Button {
+            path.append(PackFlashcardRoute(pack: pack, initialVerseID: verse.id))
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.neuBg)
+                        .frame(width: 10, height: 10)
+                        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.16), radius: 1.2, x: 1.0, y: 1.0)
+                        .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.08 : 0.6), radius: 1.2, x: -0.5, y: -0.5)
+                    Circle()
+                        .fill(healthColor(for: verse.memoryHealth ?? 0))
+                        .frame(width: 6, height: 6)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verse.reference)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.75) : Color.black.opacity(0.62))
+                        .lineLimit(1)
+
+                    Text(verse.text)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.42) : Color.black.opacity(0.4))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Text("\(Int((verse.memoryHealth ?? 0) * 100))%")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.45) : Color.black.opacity(0.42))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                NeuRaised(shape: RoundedRectangle(cornerRadius: 14, style: .continuous), radius: 7, distance: 6)
+            )
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                pendingVerseEdit = verse
+                showEditVerse = true
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.7) : Color.black.opacity(0.62))
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(Color.neuBg.opacity(colorScheme == .dark ? 0.98 : 1))
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(colorScheme == .dark ? 0.1 : 0.45), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.42 : 0.18), radius: 4, x: 2, y: 2)
+                            .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.06 : 0.6), radius: 3, x: -1.5, y: -1.5)
+                    )
+            }
+            .tint(Color.neuBg.opacity(colorScheme == .dark ? 0.94 : 0.98))
+            .accessibilityLabel("Edit")
+
+            Button {
+                pendingVerseDelete = verse
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.red.opacity(colorScheme == .dark ? 0.78 : 0.72))
+                    .frame(width: 42, height: 42)
+                    .background(
+                        Circle()
+                            .fill(Color.neuBg.opacity(colorScheme == .dark ? 0.98 : 1))
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(colorScheme == .dark ? 0.1 : 0.45), lineWidth: 1)
+                            )
+                            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.42 : 0.18), radius: 4, x: 2, y: 2)
+                            .shadow(color: Color.white.opacity(colorScheme == .dark ? 0.06 : 0.6), radius: 3, x: -1.5, y: -1.5)
+                    )
+            }
+            .tint(Color.neuBg.opacity(colorScheme == .dark ? 0.94 : 0.98))
+            .accessibilityLabel("Delete")
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 20) {
+            header
+
+            Spacer()
+
+            ZStack {
+                NeuInset(shape: Circle())
+                    .frame(width: 80, height: 80)
+                Image(systemName: "book.closed")
+                    .font(.system(size: 28, weight: .medium))
+                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.25) : Color.black.opacity(0.25))
+            }
+
+            Text("No verses yet")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.5))
+
+            Text("Tap + to add your first verse")
+                .font(.system(size: 15))
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.3) : Color.black.opacity(0.3))
+
+            Spacer().frame(height: 180)
+        }
+        .padding(.horizontal, 20)
+    }
+
+    private var floatingFooter: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.neuBg.opacity(0), Color.neuBg.opacity(0.85), Color.neuBg],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 32)
+            .allowsHitTesting(false)
+
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(pack.verses.count) verse\(pack.verses.count == 1 ? "" : "s")")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color(white: colorScheme == .dark ? 0.88 : 0.18))
+
+                    if !pack.verses.isEmpty {
+                        HStack(spacing: 6) {
+                            NeuProgressRing(progress: averageMemoryHealth, size: 18)
+                            Text("\(Int(averageMemoryHealth * 100))% memorized")
+                                .font(.system(size: 12))
+                                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.35) : Color.black.opacity(0.35))
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    showAddVerse = true
+                } label: {
+                    ZStack {
+                        NeuRaised(
+                            shape: RoundedRectangle(cornerRadius: 14, style: .continuous),
+                            radius: 8,
+                            distance: 6
+                        )
+                        Image(systemName: "plus")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.55) : Color.black.opacity(0.55))
+                    }
+                    .frame(width: 50, height: 50)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 4)
+            .padding(.bottom, 120)
+            .background(Color.neuBg)
+        }
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private func deletePendingVerse() {
+        guard let verse = pendingVerseDelete else { return }
+        modelContext.delete(verse)
+        try? modelContext.save()
+        pendingVerseDelete = nil
+    }
+
+    private func markPackAccess() {
+        pack.lastAccessedAt = Date()
+        try? modelContext.save()
+    }
+
+    private func healthColor(for health: Double) -> Color {
+        if health >= 0.75 { return Color(red: 0.55, green: 0.78, blue: 0.95) }
+        let t = max(0, health / 0.75)
+        return Color(
+            red: 0.9 + 0.05 * t,
+            green: 0.3 + 0.5 * t,
+            blue: 0.25 + 0.05 * t
+        )
+    }
+}
+
 // MARK: - Pack Detail View
 
 struct PackDetailView: View {
@@ -474,26 +785,6 @@ struct PackDetailView: View {
             .background(Color.neuBg)
         }
         .ignoresSafeArea(edges: .bottom)
-    }
-}
-
-// MARK: - Swipe Action Circle
-
-private struct NeuSwipeActionCircle: View {
-    @Environment(\.colorScheme) private var colorScheme
-    let icon: String
-    var size: CGFloat = 44
-    var iconColor: Color? = nil
-
-    var body: some View {
-        ZStack {
-            NeuRaised(shape: Circle(), radius: 6, distance: 5)
-                .frame(width: size, height: size)
-            Image(systemName: icon)
-                .font(.system(size: size * 0.36, weight: .semibold))
-                .foregroundStyle(iconColor ?? (colorScheme == .dark ? Color.white.opacity(0.5) : Color.black.opacity(0.45)))
-        }
-        .contentShape(Circle())
     }
 }
 
